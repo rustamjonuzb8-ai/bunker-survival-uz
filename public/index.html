@@ -634,7 +634,134 @@
       d.textContent = text;
       parent.appendChild(d);
     }
+// ===== BUNKER VOICE CHAT =====
+let voiceStream = null;
+let voicePeers = {};
+let voiceMuted = true;
+let voiceEnabled = false;
+let voiceSelfId = null;
 
+const voiceConfig = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }
+  ]
+};
+
+function voiceSend(to, data) {
+  send({
+    type: "voice-signal",
+    to: to,
+    data: data
+  });
+}
+
+function voiceMute(muted) {
+  voiceMuted = muted;
+
+  if (voiceStream) {
+    voiceStream.getAudioTracks().forEach(track => {
+      track.enabled = !muted;
+    });
+  }
+}
+
+function voiceStop() {
+  Object.values(voicePeers).forEach(peer => {
+    peer.connection.close();
+    if (peer.audio) peer.audio.remove();
+  });
+
+  voicePeers = {};
+
+  if (voiceStream) {
+    voiceStream.getTracks().forEach(track => track.stop());
+    voiceStream = null;
+  }
+
+  voiceEnabled = false;
+  voiceMuted = true;
+  voiceSelfId = null;
+}
+
+function voiceCreatePeer(id) {
+  if (voicePeers[id]) return voicePeers[id].connection;
+
+  const pc = new RTCPeerConnection(voiceConfig);
+  const audio = document.createElement("audio");
+
+  audio.autoplay = true;
+  audio.playsInline = true;
+  document.body.appendChild(audio);
+
+  voicePeers[id] = { connection: pc, audio: audio };
+
+  voiceStream.getTracks().forEach(track => {
+    pc.addTrack(track, voiceStream);
+  });
+
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      voiceSend(id, { candidate: event.candidate });
+    }
+  };
+
+  pc.ontrack = event => {
+    audio.srcObject = event.streams[0];
+    audio.play().catch(() => {});
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (["failed", "closed"].includes(pc.connectionState)) {
+      audio.remove();
+      delete voicePeers[id];
+    }
+  };
+
+  return pc;
+}
+
+async function voiceStart() {
+  if (voiceEnabled) return;
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false
+    });
+
+    voiceEnabled = true;
+    voiceMute(false);
+
+    alert("Mikrofon yoqildi!");
+  } catch (error) {
+    alert("Mikrofonga ruxsat berilmadi. Telefon sozlamalarini tekshiring.");
+    voiceStop();
+  }
+}
+
+async function voiceHandleSignal(from, data) {
+  if (!voiceEnabled || !voiceStream) return;
+
+  const pc = voiceCreatePeer(from);
+
+  try {
+    if (data.description) {
+      await pc.setRemoteDescription(data.description);
+
+      if (data.description.type === "offer") {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        voiceSend(from, { description: pc.localDescription });
+      }
+    }
+
+    if (data.candidate) {
+      await pc.addIceCandidate(data.candidate);
+    }
+  } catch (error) {
+    console.log("Voice error:", error);
+  }
+}
     // ---- O'yin ekranini chizish ----
     function renderGame(m) {
       var phase = m.phase;
