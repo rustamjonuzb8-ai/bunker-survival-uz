@@ -452,6 +452,39 @@ wss.on("connection", (ws) => {
       }
     }
 
+    // WEBRTC: ovoz signallarini faqat bir xonadagi tirik o'yinchilarga uzatish
+    if (msg.type === "voice-signal") {
+      const room = rooms[ws.roomCode];
+      if (!room || !room.started) return;
+
+      if (!["reveal", "discuss", "vote"].includes(room.phase)) return;
+
+      const sender = room.players.find((p) => p.id === ws.playerId);
+      const targetId = String(msg.to || "");
+      const target = room.players.find((p) => p.id === targetId);
+
+      if (!sender || !sender.alive || !sender.ws || sender.ws !== ws) return;
+      if (!target || !target.alive || !target.ws) return;
+      if (sender.id === target.id) return;
+
+      if (!msg.data || typeof msg.data !== "object") return;
+
+      let dataSize;
+      try {
+        dataSize = JSON.stringify(msg.data).length;
+      } catch (e) {
+        return;
+      }
+
+      if (dataSize > 16000) return;
+
+      send(target.ws, {
+        type: "voice-signal",
+        from: sender.id,
+        data: msg.data
+      });
+    }
+
     // Chat
     if (msg.type === "chat") {
       const room = rooms[ws.roomCode];
