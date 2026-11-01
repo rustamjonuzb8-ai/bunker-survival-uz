@@ -74,6 +74,7 @@
       border-radius: 14px;
       padding: 14px;
       margin-bottom: 16px;
+      cursor: pointer;
     }
     .codebox small { color: #999; display: block; margin-bottom: 4px; }
     .codebox .big {
@@ -101,6 +102,43 @@
     .players li.off { opacity: 0.45; }
     .players .tag { font-size: 12px; color: #888; }
     .hint { color: #888; font-size: 13px; margin-bottom: 12px; }
+
+    /* O'YIN EKRANI */
+    .disaster {
+      background: linear-gradient(135deg, #3a0f0f, #1a1a1a);
+      border: 1px solid #c62828;
+      border-radius: 14px;
+      padding: 16px;
+      margin: 10px 0 12px;
+      box-shadow: 0 0 25px rgba(198, 40, 40, 0.25);
+    }
+    .disaster .dtitle { font-size: 22px; font-weight: 800; color: #ff5252; margin-bottom: 8px; }
+    .disaster p { font-size: 14px; color: #ddd; line-height: 1.5; }
+    .bunkerinfo {
+      background: #1b1b1b;
+      border: 1px solid #ffc400;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 18px;
+      font-size: 15px;
+    }
+    .bunkerinfo b { color: #ffc400; font-size: 18px; }
+    .sec { font-size: 17px; color: #ffc400; margin: 14px 0 6px; text-align: left; }
+    .card {
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-left: 4px solid #ffc400;
+      border-radius: 10px;
+      padding: 11px 14px;
+      margin-bottom: 8px;
+      text-align: left;
+      opacity: 0;
+      animation: cardIn 0.45s forwards;
+    }
+    .card.secret { border-left-color: #c62828; background: #221414; }
+    .card .clabel { font-size: 12px; color: #999; margin-bottom: 3px; }
+    .card .cvalue { font-size: 16px; font-weight: 600; }
+
     #toast {
       position: fixed;
       left: 50%;
@@ -119,6 +157,7 @@
     @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     @keyframes slideIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
@@ -144,8 +183,8 @@
       <h1 style="font-size:30px;letter-spacing:5px;">LOBBI</h1>
       <div id="status2" class="status">Serverga ulanmoqda...</div>
 
-      <div class="codebox">
-        <small>Xona kodi</small>
+      <div class="codebox" id="codeBox">
+        <small>Xona kodi (bosib nusxalang)</small>
         <div class="big" id="roomCode">-----</div>
       </div>
 
@@ -156,6 +195,32 @@
 
       <button class="btn yellow" id="startBtn" onclick="startGame()" style="display:none;">▶️ O'yinni boshlash</button>
       <p class="hint" id="hintText"></p>
+      <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
+    </div>
+
+    <!-- O'YIN EKRANI -->
+    <div id="gameScreen" class="screen">
+      <h1 style="font-size:32px;letter-spacing:6px;margin-top:10px;">BUNKER</h1>
+      <div id="status3" class="status">Serverga ulanmoqda...</div>
+
+      <div class="disaster">
+        <div class="dtitle" id="dTitle"></div>
+        <p id="dText"></p>
+      </div>
+
+      <div class="bunkerinfo">
+        🛡️ Bunkerda faqat <b id="capText">0</b> ta joy bor.<br>
+        Hozir <b id="totText">0</b> kishi bor.
+      </div>
+
+      <h2 class="sec">🪪 Sizning personajingiz</h2>
+      <p class="hint" style="text-align:left;">Buni hozircha faqat siz ko'ryapsiz</p>
+      <div id="myCards"></div>
+
+      <h2 class="sec">👥 O'yinchilar</h2>
+      <ul class="players" id="gamePlayers"></ul>
+
+      <button class="btn gray" id="backLobbyBtn" onclick="backToLobby()" style="display:none;">🔄 Lobbiga qaytish (test)</button>
       <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
     </div>
 
@@ -191,15 +256,17 @@
     var ws = null;
     var currentCode = null;
     var myName = savedName;
+    var SCREENS = ["homeScreen", "lobbyScreen", "gameScreen"];
 
     function showScreen(id) {
-      document.getElementById("homeScreen").classList.remove("active");
-      document.getElementById("lobbyScreen").classList.remove("active");
+      SCREENS.forEach(function (s) {
+        document.getElementById(s).classList.remove("active");
+      });
       document.getElementById(id).classList.add("active");
     }
 
     function setStatus(ok, text) {
-      ["status", "status2"].forEach(function (id) {
+      ["status", "status2", "status3"].forEach(function (id) {
         var el = document.getElementById(id);
         el.textContent = text;
         el.className = "status " + (ok ? "ok" : "bad");
@@ -235,6 +302,11 @@
           currentCode = m.code;
           renderLobby(m);
           showScreen("lobbyScreen");
+        }
+        if (m.type === "game") {
+          currentCode = m.code;
+          renderGame(m);
+          showScreen("gameScreen");
         }
         if (m.type === "error") {
           toast(m.text);
@@ -302,7 +374,11 @@
     }
 
     function startGame() {
-      toast("O'yinni boshlash keyingi qadamda qo'shiladi!");
+      send({ type: "start" });
+    }
+
+    function backToLobby() {
+      send({ type: "lobby" });
     }
 
     function inviteFriends() {
@@ -315,6 +391,19 @@
         window.open(url, "_blank");
       }
     }
+
+    document.getElementById("codeBox").onclick = function () {
+      var c = currentCode;
+      if (!c) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(c).then(
+          function () { toast("Kod nusxalandi: " + c); },
+          function () { toast("Kod: " + c); }
+        );
+      } else {
+        toast("Kod: " + c);
+      }
+    };
 
     // ---- Lobbi chizish ----
     function renderLobby(m) {
@@ -330,8 +419,7 @@
         if (!p.online) li.className += " off";
 
         var left = document.createElement("span");
-        var label = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
-        left.textContent = label;
+        left.textContent = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
 
         var right = document.createElement("span");
         right.className = "tag";
@@ -357,19 +445,58 @@
       }
     }
 
-   document.querySelector(".codebox").onclick = function () {
-  var c = currentCode;
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(c).then(
-      function () { toast("Kod nusxalandi: " + c); },
-      function () { toast("Kod: " + c); }
-    );
-  } else {
-    toast("Kod: " + c);
-  }
-};
+    // ---- O'yin ekranini chizish ----
+    function renderGame(m) {
+      document.getElementById("dTitle").textContent = m.disaster.title;
+      document.getElementById("dText").textContent = m.disaster.text;
+      document.getElementById("capText").textContent = m.capacity;
+      document.getElementById("totText").textContent = m.total;
 
-  connect();
+      var cards = document.getElementById("myCards");
+      cards.innerHTML = "";
+      m.me.forEach(function (t, i) {
+        var div = document.createElement("div");
+        div.className = "card" + (t.key === "secret" ? " secret" : "");
+        div.style.animationDelay = (i * 0.1) + "s";
+
+        var label = document.createElement("div");
+        label.className = "clabel";
+        label.textContent = t.label;
+
+        var value = document.createElement("div");
+        value.className = "cvalue";
+        value.textContent = t.value;
+
+        div.appendChild(label);
+        div.appendChild(value);
+        cards.appendChild(div);
+      });
+
+      var list = document.getElementById("gamePlayers");
+      list.innerHTML = "";
+      m.players.forEach(function (p) {
+        var li = document.createElement("li");
+        if (p.id === myId) li.className = "me";
+        if (!p.online) li.className += " off";
+
+        var left = document.createElement("span");
+        left.textContent = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
+
+        var right = document.createElement("span");
+        right.className = "tag";
+        var opened = Object.keys(p.revealed || {}).length;
+        right.textContent = opened + "/7 ochilgan" + (p.id === myId ? " · siz" : "");
+
+        li.appendChild(left);
+        li.appendChild(right);
+        list.appendChild(li);
+      });
+
+      document.getElementById("backLobbyBtn").style.display =
+        m.hostId === myId ? "block" : "none";
+    }
+
+    connect();
   </script>
 </body>
 </html>
