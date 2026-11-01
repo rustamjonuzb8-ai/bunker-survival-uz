@@ -6,42 +6,55 @@
   <title>BUNKER</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body {
       min-height: 100vh;
       background: radial-gradient(circle at 50% 0%, #2a2a2a 0%, #121212 60%, #0a0a0a 100%);
       color: #eee;
       font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       padding: 20px;
     }
-    .box { width: 100%; max-width: 420px; text-align: center; }
-    .icon { font-size: 64px; animation: pulse 2s infinite; }
+    .box { width: 100%; max-width: 420px; margin: 0 auto; text-align: center; }
+    .screen { display: none; }
+    .screen.active { display: block; animation: fadeIn 0.4s; }
+    .icon { font-size: 60px; animation: pulse 2s infinite; margin-top: 10px; }
     h1 {
-      font-size: 44px;
+      font-size: 42px;
       letter-spacing: 8px;
       color: #ffc400;
       text-shadow: 0 0 20px rgba(255, 196, 0, 0.4);
-      margin: 10px 0 6px;
+      margin: 8px 0 6px;
     }
-    .sub { color: #999; margin-bottom: 30px; font-size: 15px; }
+    .sub { color: #999; margin-bottom: 20px; font-size: 15px; }
     .status {
       display: inline-block;
-      padding: 8px 16px;
+      padding: 7px 14px;
       border-radius: 20px;
-      font-size: 14px;
+      font-size: 13px;
       background: #222;
       border: 1px solid #444;
-      margin-bottom: 30px;
+      margin-bottom: 22px;
     }
     .status.ok { color: #6dff8a; border-color: #2e7d3f; }
     .status.bad { color: #ff5252; border-color: #b71c1c; }
+    input {
+      width: 100%;
+      padding: 15px;
+      margin-bottom: 12px;
+      background: #1b1b1b;
+      border: 1px solid #444;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      text-align: center;
+      outline: none;
+    }
+    input:focus { border-color: #ffc400; }
+    input.code { letter-spacing: 6px; text-transform: uppercase; font-weight: 700; }
     .btn {
       display: block;
       width: 100%;
-      padding: 16px;
+      padding: 15px;
       margin-bottom: 12px;
       border: none;
       border-radius: 12px;
@@ -51,43 +64,300 @@
     }
     .btn.yellow { background: #ffc400; color: #111; }
     .btn.red { background: #c62828; color: #fff; }
-    .btn:active { transform: scale(0.97); }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.12); }
+    .btn.gray { background: #2a2a2a; color: #ddd; border: 1px solid #444; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .or { color: #666; margin: 6px 0 12px; font-size: 14px; }
+    .codebox {
+      background: #1b1b1b;
+      border: 2px dashed #ffc400;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
     }
+    .codebox small { color: #999; display: block; margin-bottom: 4px; }
+    .codebox .big {
+      font-size: 38px;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #ffc400;
+    }
+    .count { color: #aaa; margin-bottom: 10px; font-size: 14px; }
+    .players { list-style: none; margin-bottom: 16px; }
+    .players li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-left: 4px solid #c62828;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      text-align: left;
+      animation: slideIn 0.3s;
+    }
+    .players li.me { border-left-color: #ffc400; }
+    .players li.off { opacity: 0.45; }
+    .players .tag { font-size: 12px; color: #888; }
+    .hint { color: #888; font-size: 13px; margin-bottom: 12px; }
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 30px;
+      transform: translateX(-50%) translateY(100px);
+      background: #c62828;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 15px;
+      max-width: 90%;
+      transition: transform 0.3s;
+      z-index: 10;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
   <div class="box">
-    <div class="icon">☢️</div>
-    <h1>BUNKER</h1>
-    <p class="sub">Apokalipsisdan keyin kim omon qoladi?</p>
-    <div id="status" class="status">Serverga ulanmoqda...</div>
-    <button class="btn yellow" onclick="soon()">🚪 Xona yaratish</button>
-    <button class="btn red" onclick="soon()">🔑 Kod bilan kirish</button>
+
+    <!-- BOSH EKRAN -->
+    <div id="homeScreen" class="screen active">
+      <div class="icon">☢️</div>
+      <h1>BUNKER</h1>
+      <p class="sub">Apokalipsisdan keyin kim omon qoladi?</p>
+      <div id="status" class="status">Serverga ulanmoqda...</div>
+
+      <input id="nameInput" type="text" maxlength="20" placeholder="Ismingiz" autocomplete="off">
+      <button class="btn yellow" onclick="createRoom()">🚪 Xona yaratish</button>
+      <div class="or">— yoki —</div>
+      <input id="codeInput" class="code" type="text" maxlength="5" placeholder="XONA KODI" autocomplete="off">
+      <button class="btn red" onclick="joinRoom()">🔑 Kod bilan kirish</button>
+    </div>
+
+    <!-- LOBBI EKRANI -->
+    <div id="lobbyScreen" class="screen">
+      <div class="icon">🚪</div>
+      <h1 style="font-size:30px;letter-spacing:5px;">LOBBI</h1>
+      <div id="status2" class="status">Serverga ulanmoqda...</div>
+
+      <div class="codebox">
+        <small>Xona kodi</small>
+        <div class="big" id="roomCode">-----</div>
+      </div>
+
+      <button class="btn gray" onclick="inviteFriends()">📨 Do'stlarni taklif qilish</button>
+
+      <div class="count" id="countText"></div>
+      <ul class="players" id="playersList"></ul>
+
+      <button class="btn yellow" id="startBtn" onclick="startGame()" style="display:none;">▶️ O'yinni boshlash</button>
+      <p class="hint" id="hintText"></p>
+      <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
+    </div>
+
   </div>
 
+  <div id="toast"></div>
+
   <script>
-    const tg = window.Telegram && window.Telegram.WebApp;
+    var tg = window.Telegram && window.Telegram.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
 
-    const statusEl = document.getElementById("status");
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(proto + "://" + location.host);
-
-    ws.onmessage = function () {
-      statusEl.textContent = "🟢 Server bilan aloqa bor";
-      statusEl.className = "status ok";
-    };
-    ws.onerror = function () {
-      statusEl.textContent = "🔴 Serverga ulanib bo'lmadi";
-      statusEl.className = "status bad";
-    };
-
-    function soon() {
-      alert("Bu tugma keyingi qadamda ishlaydi!");
+    // ---- Foydalanuvchi ----
+    var myId = null;
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      myId = "tg" + tg.initDataUnsafe.user.id;
+    } else {
+      try { myId = localStorage.getItem("bunkerId"); } catch (e) {}
+      if (!myId) {
+        myId = "u" + Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem("bunkerId", myId); } catch (e) {}
+      }
     }
+
+    var nameInput = document.getElementById("nameInput");
+    var savedName = "";
+    try { savedName = localStorage.getItem("bunkerName") || ""; } catch (e) {}
+    if (!savedName && tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      savedName = tg.initDataUnsafe.user.first_name || "";
+    }
+    nameInput.value = savedName;
+
+    // ---- Holat ----
+    var ws = null;
+    var currentCode = null;
+    var myName = savedName;
+
+    function showScreen(id) {
+      document.getElementById("homeScreen").classList.remove("active");
+      document.getElementById("lobbyScreen").classList.remove("active");
+      document.getElementById(id).classList.add("active");
+    }
+
+    function setStatus(ok, text) {
+      ["status", "status2"].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.textContent = text;
+        el.className = "status " + (ok ? "ok" : "bad");
+      });
+    }
+
+    var toastTimer = null;
+    function toast(text) {
+      var el = document.getElementById("toast");
+      el.textContent = text;
+      el.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2800);
+    }
+
+    // ---- Server bilan aloqa ----
+    function connect() {
+      var proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(proto + "://" + location.host);
+
+      ws.onopen = function () {
+        setStatus(true, "🟢 Server bilan aloqa bor");
+        if (currentCode) {
+          send({ type: "join", id: myId, name: myName, code: currentCode });
+        }
+      };
+
+      ws.onmessage = function (event) {
+        var m;
+        try { m = JSON.parse(event.data); } catch (e) { return; }
+
+        if (m.type === "room") {
+          currentCode = m.code;
+          renderLobby(m);
+          showScreen("lobbyScreen");
+        }
+        if (m.type === "error") {
+          toast(m.text);
+          if (m.fatal) {
+            currentCode = null;
+            showScreen("homeScreen");
+          }
+        }
+        if (m.type === "left") {
+          currentCode = null;
+          showScreen("homeScreen");
+        }
+      };
+
+      ws.onclose = function () {
+        setStatus(false, "🔴 Aloqa uzildi, qayta ulanmoqda...");
+        setTimeout(connect, 2000);
+      };
+      ws.onerror = function () {
+        setStatus(false, "🔴 Serverga ulanib bo'lmadi");
+      };
+    }
+
+    function send(obj) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify(obj));
+        return true;
+      }
+      toast("Server bilan aloqa yo'q. Biroz kuting...");
+      return false;
+    }
+
+    function getName() {
+      var name = nameInput.value.trim();
+      if (!name) {
+        toast("Avval ismingizni yozing");
+        nameInput.focus();
+        return null;
+      }
+      myName = name;
+      try { localStorage.setItem("bunkerName", name); } catch (e) {}
+      return name;
+    }
+
+    // ---- Tugmalar ----
+    function createRoom() {
+      var name = getName();
+      if (!name) return;
+      send({ type: "create", id: myId, name: name });
+    }
+
+    function joinRoom() {
+      var name = getName();
+      if (!name) return;
+      var code = document.getElementById("codeInput").value.trim().toUpperCase();
+      if (code.length !== 5) {
+        toast("Xona kodi 5 ta belgidan iborat");
+        return;
+      }
+      send({ type: "join", id: myId, name: name, code: code });
+    }
+
+    function leaveRoom() {
+      send({ type: "leave" });
+    }
+
+    function startGame() {
+      toast("O'yinni boshlash keyingi qadamda qo'shiladi!");
+    }
+
+    function inviteFriends() {
+      var text = "☢️ BUNKER o'yiniga qo'shil! Xona kodi: " + currentCode;
+      var link = "https://t.me/Bunkeruz1_bot";
+      var url = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text);
+      if (tg && tg.openTelegramLink) {
+        tg.openTelegramLink(url);
+      } else {
+        window.open(url, "_blank");
+      }
+    }
+
+    // ---- Lobbi chizish ----
+    function renderLobby(m) {
+      document.getElementById("roomCode").textContent = m.code;
+      document.getElementById("countText").textContent =
+        "O'yinchilar: " + m.players.length + " / " + m.max + " (kamida " + m.min + " kerak)";
+
+      var list = document.getElementById("playersList");
+      list.innerHTML = "";
+      m.players.forEach(function (p) {
+        var li = document.createElement("li");
+        if (p.id === myId) li.className = "me";
+        if (!p.online) li.className += " off";
+
+        var left = document.createElement("span");
+        var label = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
+        left.textContent = label;
+
+        var right = document.createElement("span");
+        right.className = "tag";
+        right.textContent = (p.id === myId ? "siz" : "") + (p.online ? "" : " (uzilgan)");
+
+        li.appendChild(left);
+        li.appendChild(right);
+        list.appendChild(li);
+      });
+
+      var startBtn = document.getElementById("startBtn");
+      var hint = document.getElementById("hintText");
+      var isHost = m.hostId === myId;
+      if (isHost) {
+        startBtn.style.display = "block";
+        startBtn.disabled = m.players.length < m.min;
+        hint.textContent = m.players.length < m.min
+          ? "Boshlash uchun yana " + (m.min - m.players.length) + " ta o'yinchi kerak"
+          : "Hammasi tayyor!";
+      } else {
+        startBtn.style.display = "none";
+        hint.textContent = "Xona egasi o'yinni boshlashini kuting...";
+      }
+    }
+
+    connect();
   </script>
 </body>
 </html>
