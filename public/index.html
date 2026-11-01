@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>BUNKER</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% 0%, #2a2a2a 0%, #121212 60%, #0a0a0a 100%);
+      color: #eee;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .box { width: 100%; max-width: 420px; text-align: center; }
+    .icon { font-size: 64px; animation: pulse 2s infinite; }
+    h1 {
+      font-size: 44px;
+      letter-spacing: 8px;
+      color: #ffc400;
+      text-shadow: 0 0 20px rgba(255, 196, 0, 0.4);
+      margin: 10px 0 6px;
+    }
+    .sub { color: #999; margin-bottom: 30px; font-size: 15px; }
+    .status {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      background: #222;
+      border: 1px solid #444;
+      margin-bottom: 30px;
+    }
+    .status.ok { color: #6dff8a; border-color: #2e7d3f; }
+    .status.bad { color: #ff5252; border-color: #b71c1c; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn.yellow { background: #ffc400; color: #111; }
+    .btn.red { background: #c62828; color: #fff; }
+    .btn:active { transform: scale(0.97); }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">☢️</div>
+    <h1>BUNKER</h1>
+    <p class="sub">Apokalipsisdan keyin kim omon qoladi?</p>
+    <div id="status" class="status">Serverga ulanmoqda...</div>
+    <button class="btn yellow" onclick="soon()">🚪 Xona yaratish</button>
+    <button class="btn red" onclick="soon()">🔑 Kod bilan kirish</button>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const statusEl = document.getElementById("status");
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(proto + "://" + location.host);
+
+    ws.onmessage = function () {
+      statusEl.textContent = "🟢 Server bilan aloqa bor";
+      statusEl.className = "status ok";
+    };
+    ws.onerror = function () {
+      statusEl.textContent = "🔴 Serverga ulanib bo'lmadi";
+      statusEl.className = "status bad";
+    };
+
+    function soon() {
+      alert("Bu tugma keyingi qadamda ishlaydi!");
+    }
+  </script>
+</body>
+</html>
