@@ -10,6 +10,7 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
 const MIN_PLAYERS = 1; // TEST UCHUN. Keyin 4 ga qaytaramiz
 const MAX_PLAYERS = 12;
+const MAX_ROUNDS = 7;
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -64,6 +65,7 @@ function startGame(room) {
   const n = room.players.length;
   room.started = true;
   room.phase = "cards";
+  room.round = 1;
   room.disaster = DISASTERS[Math.floor(Math.random() * DISASTERS.length)];
   room.capacity = Math.max(1, Math.floor(n / 2));
 
@@ -77,6 +79,7 @@ function startGame(room) {
   room.players.forEach((p, i) => {
     const age = 18 + Math.floor(Math.random() * 58);
     p.revealed = {};
+    p.done = false;
     p.traits = [
       { key: "job", label: LABELS.job, value: jobs[i] },
       { key: "age", label: LABELS.age, value: age + " yosh" },
@@ -117,14 +120,23 @@ function broadcast(room) {
         code: room.code,
         hostId: room.hostId,
         phase: room.phase,
+        round: room.round,
+        maxRounds: MAX_ROUNDS,
         disaster: room.disaster,
         capacity: room.capacity,
         total: room.players.length,
-        me: p.traits || [],
+        mydone: !!p.done,
+        me: (p.traits || []).map((t) => ({
+          key: t.key,
+          label: t.label,
+          value: t.value,
+          opened: !!(p.revealed && p.revealed[t.key]),
+        })),
         players: room.players.map((x) => ({
           id: x.id,
           name: x.name,
           online: !!x.ws,
+          done: !!x.done,
           revealed: x.revealed || {},
         })),
       });
@@ -192,6 +204,7 @@ wss.on("connection", (ws) => {
         hostId: id,
         started: false,
         phase: "lobby",
+        round: 0,
         players: [{ id: id, name: name, ws: ws }],
       };
       rooms[code] = room;
@@ -240,14 +253,49 @@ wss.on("connection", (ws) => {
       broadcast(room);
     }
 
+    // Xususiyatni hammaga ochish
+    if (msg.type === "reveal") {
+      const room = rooms[ws.roomCode];
+      if (!room || !room.started) return;
+      const p = room.players.find((x) => x.id === ws.playerId);
+      if (!p) return;
+      if (p.done) {
+        return send(ws, { type: "error", text: "Bu raundda allaqachon ochgansiz" });
+      }
+      const t = (p.traits || []).find((x) => x.key === msg.key);
+      if (!t || p.revealed[t.key]) return;
+      p.revealed[t.key] = { label: t.label, value: t.value };
+      p.done = true;
+      broadcast(room);
+    }
+
+    // Keyingi raund (faqat xona egasi, hamma ochgandan keyin)
+    if (msg.type === "nextround") {
+      const room = rooms[ws.roomCode];
+      if (!room || !room.started || room.hostId !== ws.playerId) return;
+      if (!room.players.every((x) => x.done)) {
+        return send(ws, { type: "error", text: "Hali hamma o'z kartasini ochmadi" });
+      }
+      if (room.round >= MAX_ROUNDS) {
+        return send(ws, { type: "error", text: "Raundlar tugadi. Ovoz berish keyingi qadamda qo'shiladi" });
+      }
+      room.round += 1;
+      room.players.forEach((x) => {
+        x.done = false;
+      });
+      broadcast(room);
+    }
+
     if (msg.type === "lobby") {
       const room = rooms[ws.roomCode];
       if (!room || room.hostId !== ws.playerId) return;
       room.started = false;
       room.phase = "lobby";
+      room.round = 0;
       room.players.forEach((p) => {
         p.traits = null;
         p.revealed = {};
+        p.done = false;
       });
       broadcast(room);
     }
