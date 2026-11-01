@@ -87,6 +87,7 @@
     .players { list-style: none; margin-bottom: 16px; }
     .players li {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       background: #1b1b1b;
@@ -101,6 +102,16 @@
     .players li.me { border-left-color: #ffc400; }
     .players li.off { opacity: 0.45; }
     .players .tag { font-size: 12px; color: #888; }
+    .players .revs {
+      width: 100%;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #2c2c2c;
+      font-size: 13px;
+      color: #ccc;
+    }
+    .players .revs div { margin-bottom: 4px; }
+    .players .revs b { color: #ffc400; font-weight: 600; }
     .hint { color: #888; font-size: 13px; margin-bottom: 12px; }
 
     /* O'YIN EKRANI */
@@ -119,10 +130,19 @@
       border: 1px solid #ffc400;
       border-radius: 12px;
       padding: 12px;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
       font-size: 15px;
     }
     .bunkerinfo b { color: #ffc400; font-size: 18px; }
+    .roundbar {
+      background: #2a1d00;
+      border: 1px solid #ffc400;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .roundbar .rtitle { font-size: 20px; font-weight: 800; color: #ffc400; }
+    .roundbar .rsub { font-size: 14px; color: #ddd; margin-top: 4px; }
     .sec { font-size: 17px; color: #ffc400; margin: 14px 0 6px; text-align: left; }
     .card {
       background: #1b1b1b;
@@ -136,8 +156,22 @@
       animation: cardIn 0.45s forwards;
     }
     .card.secret { border-left-color: #c62828; background: #221414; }
+    .card.opened { border-left-color: #2e7d3f; }
     .card .clabel { font-size: 12px; color: #999; margin-bottom: 3px; }
     .card .cvalue { font-size: 16px; font-weight: 600; }
+    .card .copened { font-size: 12px; color: #6dff8a; margin-top: 6px; }
+    .openbtn {
+      margin-top: 8px;
+      padding: 8px 14px;
+      background: #ffc400;
+      color: #111;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .openbtn:active { transform: scale(0.96); }
 
     #toast {
       position: fixed;
@@ -213,13 +247,20 @@
         Hozir <b id="totText">0</b> kishi bor.
       </div>
 
+      <div class="roundbar">
+        <div class="rtitle" id="roundTitle"></div>
+        <div class="rsub" id="roundSub"></div>
+      </div>
+
       <h2 class="sec">🪪 Sizning personajingiz</h2>
-      <p class="hint" style="text-align:left;">Buni hozircha faqat siz ko'ryapsiz</p>
+      <p class="hint" id="myHint" style="text-align:left;"></p>
       <div id="myCards"></div>
 
       <h2 class="sec">👥 O'yinchilar</h2>
       <ul class="players" id="gamePlayers"></ul>
 
+      <button class="btn yellow" id="nextBtn" onclick="nextRound()" style="display:none;">➡️ Keyingi raund</button>
+      <p class="hint" id="nextHint"></p>
       <button class="btn gray" id="backLobbyBtn" onclick="backToLobby()" style="display:none;">🔄 Lobbiga qaytish (test)</button>
       <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
     </div>
@@ -381,6 +422,10 @@
       send({ type: "lobby" });
     }
 
+    function nextRound() {
+      send({ type: "nextround" });
+    }
+
     function inviteFriends() {
       var text = "☢️ BUNKER o'yiniga qo'shil! Xona kodi: " + currentCode;
       var link = "https://t.me/Bunkeruz1_bot";
@@ -452,12 +497,25 @@
       document.getElementById("capText").textContent = m.capacity;
       document.getElementById("totText").textContent = m.total;
 
+      // Raund ma'lumoti
+      var doneCount = m.players.filter(function (p) { return p.done; }).length;
+      var allDone = doneCount === m.players.length;
+      document.getElementById("roundTitle").textContent =
+        "🔔 " + m.round + "-raund / " + m.maxRounds;
+      document.getElementById("roundSub").textContent =
+        "Kartasini ochganlar: " + doneCount + " / " + m.players.length;
+
+      document.getElementById("myHint").textContent = m.mydone
+        ? "✅ Bu raundda kartangizni ochdingiz. Boshqalarni kuting va bahslashing!"
+        : "👆 Bu raundda bitta kartangizni tanlab, hammaga ochishingiz kerak.";
+
+      // Mening kartalarim
       var cards = document.getElementById("myCards");
       cards.innerHTML = "";
       m.me.forEach(function (t, i) {
         var div = document.createElement("div");
-        div.className = "card" + (t.key === "secret" ? " secret" : "");
-        div.style.animationDelay = (i * 0.1) + "s";
+        div.className = "card" + (t.key === "secret" ? " secret" : "") + (t.opened ? " opened" : "");
+        div.style.animationDelay = (i * 0.08) + "s";
 
         var label = document.createElement("div");
         label.className = "clabel";
@@ -469,9 +527,23 @@
 
         div.appendChild(label);
         div.appendChild(value);
+
+        if (t.opened) {
+          var o = document.createElement("div");
+          o.className = "copened";
+          o.textContent = "✅ Hammaga ochilgan";
+          div.appendChild(o);
+        } else if (!m.mydone) {
+          var btn = document.createElement("button");
+          btn.className = "openbtn";
+          btn.textContent = "👁 Hammaga ochish";
+          btn.onclick = function () { send({ type: "reveal", key: t.key }); };
+          div.appendChild(btn);
+        }
         cards.appendChild(div);
       });
 
+      // O'yinchilar ro'yxati
       var list = document.getElementById("gamePlayers");
       list.innerHTML = "";
       m.players.forEach(function (p) {
@@ -484,16 +556,46 @@
 
         var right = document.createElement("span");
         right.className = "tag";
-        var opened = Object.keys(p.revealed || {}).length;
-        right.textContent = opened + "/7 ochilgan" + (p.id === myId ? " · siz" : "");
+        right.textContent = (p.done ? "✅" : "⏳") + (p.id === myId ? " · siz" : "");
 
         li.appendChild(left);
         li.appendChild(right);
+
+        var keys = Object.keys(p.revealed || {});
+        if (keys.length > 0) {
+          var revs = document.createElement("div");
+          revs.className = "revs";
+          keys.forEach(function (k) {
+            var row = document.createElement("div");
+            var b = document.createElement("b");
+            b.textContent = p.revealed[k].label + ": ";
+            var v = document.createTextNode(p.revealed[k].value);
+            row.appendChild(b);
+            row.appendChild(v);
+            revs.appendChild(row);
+          });
+          li.appendChild(revs);
+        }
         list.appendChild(li);
       });
 
-      document.getElementById("backLobbyBtn").style.display =
-        m.hostId === myId ? "block" : "none";
+      // Xona egasi tugmalari
+      var isHost = m.hostId === myId;
+      var nextBtn = document.getElementById("nextBtn");
+      var nextHint = document.getElementById("nextHint");
+      if (isHost) {
+        nextBtn.style.display = "block";
+        nextBtn.disabled = !allDone;
+        nextHint.textContent = allDone
+          ? "Hamma kartasini ochdi. Keyingi raundga o'tishingiz mumkin."
+          : "Hamma kartasini ochishini kuting...";
+      } else {
+        nextBtn.style.display = "none";
+        nextHint.textContent = allDone
+          ? "Xona egasi keyingi raundni boshlashini kuting..."
+          : "";
+      }
+      document.getElementById("backLobbyBtn").style.display = isHost ? "block" : "none";
     }
 
     connect();
