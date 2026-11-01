@@ -101,6 +101,8 @@
     }
     .players li.me { border-left-color: #ffc400; }
     .players li.off { opacity: 0.45; }
+    .players li.dead { opacity: 0.6; border-left-color: #555; background: #151515; }
+    .players li.dead .pname { text-decoration: line-through; }
     .players .tag { font-size: 12px; color: #888; }
     .players .revs {
       width: 100%;
@@ -119,30 +121,40 @@
       background: linear-gradient(135deg, #3a0f0f, #1a1a1a);
       border: 1px solid #c62828;
       border-radius: 14px;
-      padding: 16px;
-      margin: 10px 0 12px;
+      padding: 14px;
+      margin: 10px 0 10px;
       box-shadow: 0 0 25px rgba(198, 40, 40, 0.25);
     }
-    .disaster .dtitle { font-size: 22px; font-weight: 800; color: #ff5252; margin-bottom: 8px; }
-    .disaster p { font-size: 14px; color: #ddd; line-height: 1.5; }
+    .disaster .dtitle { font-size: 20px; font-weight: 800; color: #ff5252; margin-bottom: 6px; }
+    .disaster p { font-size: 13px; color: #ddd; line-height: 1.5; }
     .bunkerinfo {
       background: #1b1b1b;
       border: 1px solid #ffc400;
       border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 14px;
-      font-size: 15px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 14px;
     }
-    .bunkerinfo b { color: #ffc400; font-size: 18px; }
-    .roundbar {
+    .bunkerinfo b { color: #ffc400; font-size: 17px; }
+    .phasebar {
       background: #2a1d00;
       border: 1px solid #ffc400;
       border-radius: 12px;
       padding: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
     }
-    .roundbar .rtitle { font-size: 20px; font-weight: 800; color: #ffc400; }
-    .roundbar .rsub { font-size: 14px; color: #ddd; margin-top: 4px; }
+    .phasebar .rtitle { font-size: 19px; font-weight: 800; color: #ffc400; }
+    .phasebar .rsub { font-size: 14px; color: #ddd; margin-top: 4px; }
+    .phasebar .timer { font-size: 26px; font-weight: 800; color: #ff5252; margin-top: 6px; }
+    .spec {
+      background: #1e1e1e;
+      border: 1px dashed #666;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: #bbb;
+    }
     .sec { font-size: 17px; color: #ffc400; margin: 14px 0 6px; text-align: left; }
     .card {
       background: #1b1b1b;
@@ -172,6 +184,74 @@
       cursor: pointer;
     }
     .openbtn:active { transform: scale(0.96); }
+
+    /* OVOZ BERISH */
+    .panel {
+      background: #1b1b1b;
+      border: 1px solid #444;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+      text-align: left;
+    }
+    .panel.red { border-color: #c62828; background: #1f1212; }
+    .panel.gold { border-color: #ffc400; background: #1f1a08; }
+    .panel h3 { font-size: 18px; margin-bottom: 8px; color: #ffc400; }
+    .panel.red h3 { color: #ff5252; }
+    .votelist { list-style: none; }
+    .votelist li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #151515;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .votelist li.sel { border-color: #c62828; background: #2a1414; }
+    .votebtn {
+      padding: 8px 12px;
+      background: #c62828;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .votebtn.sel { background: #2e7d3f; }
+    .panel .row { font-size: 14px; margin-bottom: 5px; color: #ddd; }
+    .panel .note { font-size: 13px; color: #aaa; margin-bottom: 8px; }
+
+    /* CHAT */
+    .chatbox {
+      height: 220px;
+      overflow-y: auto;
+      background: #141414;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: left;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .msg { margin-bottom: 6px; word-break: break-word; }
+    .msg.sys { color: #aaa; font-style: italic; text-align: center; font-size: 13px; }
+    .msg b { color: #9ecbff; }
+    .msg.mine b { color: #ffc400; }
+    .chatrow { display: flex; gap: 8px; margin-bottom: 14px; }
+    .chatrow input { flex: 1; min-width: 0; margin-bottom: 0; text-align: left; padding: 12px; }
+    .chatrow button {
+      padding: 0 18px;
+      background: #ffc400;
+      color: #111;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
 
     #toast {
       position: fixed;
@@ -243,25 +323,50 @@
       </div>
 
       <div class="bunkerinfo">
-        🛡️ Bunkerda faqat <b id="capText">0</b> ta joy bor.<br>
-        Hozir <b id="totText">0</b> kishi bor.
+        🛡️ Bunkerda <b id="capText">0</b> ta joy bor · Hozir <b id="aliveText">0</b> kishi
       </div>
 
-      <div class="roundbar">
-        <div class="rtitle" id="roundTitle"></div>
-        <div class="rsub" id="roundSub"></div>
+      <div class="phasebar">
+        <div class="rtitle" id="phaseTitle"></div>
+        <div class="rsub" id="phaseSub"></div>
+        <div class="timer" id="timer"></div>
       </div>
+
+      <div class="spec" id="specBanner" style="display:none;">
+        👀 Siz bunkerdan haydalgansiz. Faqat tomosha qila olasiz.
+      </div>
+
+      <!-- Ovoz berish -->
+      <div class="panel red" id="voteBox" style="display:none;">
+        <h3>🗳 Kimni haydaymiz?</h3>
+        <p class="note" id="voteHint"></p>
+        <ul class="votelist" id="voteList"></ul>
+      </div>
+
+      <!-- Raund natijasi -->
+      <div class="panel red" id="resultBox" style="display:none;"></div>
+
+      <!-- Yakun -->
+      <div class="panel gold" id="endBox" style="display:none;"></div>
 
       <h2 class="sec">🪪 Sizning personajingiz</h2>
       <p class="hint" id="myHint" style="text-align:left;"></p>
       <div id="myCards"></div>
 
+      <h2 class="sec">💬 Chat</h2>
+      <div class="chatbox" id="chatBox"></div>
+      <div class="chatrow" id="chatRow">
+        <input id="chatInput" type="text" maxlength="200" placeholder="Xabar yozing..." autocomplete="off">
+        <button onclick="sendChat()">➤</button>
+      </div>
+
       <h2 class="sec">👥 O'yinchilar</h2>
       <ul class="players" id="gamePlayers"></ul>
 
-      <button class="btn yellow" id="nextBtn" onclick="nextRound()" style="display:none;">➡️ Keyingi raund</button>
-      <p class="hint" id="nextHint"></p>
-      <button class="btn gray" id="backLobbyBtn" onclick="backToLobby()" style="display:none;">🔄 Lobbiga qaytish (test)</button>
+      <button class="btn yellow" id="skipBtn" onclick="skipPhase()" style="display:none;"></button>
+      <button class="btn yellow" id="nextBtn" onclick="nextRound()" style="display:none;"></button>
+      <p class="hint" id="hostHint"></p>
+      <button class="btn gray" id="backLobbyBtn" onclick="backToLobby()" style="display:none;"></button>
       <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
     </div>
 
@@ -297,6 +402,7 @@
     var ws = null;
     var currentCode = null;
     var myName = savedName;
+    var deadline = 0;
     var SCREENS = ["homeScreen", "lobbyScreen", "gameScreen"];
 
     function showScreen(id) {
@@ -323,6 +429,14 @@
       toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2800);
     }
 
+    // Taymer
+    setInterval(function () {
+      var el = document.getElementById("timer");
+      if (!deadline) { el.textContent = ""; return; }
+      var s = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      el.textContent = "⏱ " + s + " soniya";
+    }, 500);
+
     // ---- Server bilan aloqa ----
     function connect() {
       var proto = location.protocol === "https:" ? "wss" : "ws";
@@ -341,6 +455,7 @@
 
         if (m.type === "room") {
           currentCode = m.code;
+          deadline = 0;
           renderLobby(m);
           showScreen("lobbyScreen");
         }
@@ -358,6 +473,7 @@
         }
         if (m.type === "left") {
           currentCode = null;
+          deadline = 0;
           showScreen("homeScreen");
         }
       };
@@ -410,21 +526,21 @@
       send({ type: "join", id: myId, name: name, code: code });
     }
 
-    function leaveRoom() {
-      send({ type: "leave" });
-    }
+    function leaveRoom() { send({ type: "leave" }); }
+    function startGame() { send({ type: "start" }); }
+    function backToLobby() { send({ type: "lobby" }); }
+    function nextRound() { send({ type: "nextround" }); }
+    function skipPhase() { send({ type: "skip" }); }
 
-    function startGame() {
-      send({ type: "start" });
+    function sendChat() {
+      var inp = document.getElementById("chatInput");
+      var t = inp.value.trim();
+      if (!t) return;
+      if (send({ type: "chat", text: t })) inp.value = "";
     }
-
-    function backToLobby() {
-      send({ type: "lobby" });
-    }
-
-    function nextRound() {
-      send({ type: "nextround" });
-    }
+    document.getElementById("chatInput").onkeydown = function (e) {
+      if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+    };
 
     function inviteFriends() {
       var text = "☢️ BUNKER o'yiniga qo'shil! Xona kodi: " + currentCode;
@@ -490,32 +606,187 @@
       }
     }
 
+    // ---- Chat chizish ----
+    function renderChat(list) {
+      var box = document.getElementById("chatBox");
+      var nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.innerHTML = "";
+      list.forEach(function (c) {
+        var d = document.createElement("div");
+        if (c.system) {
+          d.className = "msg sys";
+          d.textContent = c.text;
+        } else {
+          d.className = "msg" + (c.id === myId ? " mine" : "");
+          var b = document.createElement("b");
+          b.textContent = c.name + ": ";
+          d.appendChild(b);
+          d.appendChild(document.createTextNode(c.text));
+        }
+        box.appendChild(d);
+      });
+      if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    function addRow(parent, text) {
+      var d = document.createElement("div");
+      d.className = "row";
+      d.textContent = text;
+      parent.appendChild(d);
+    }
+
     // ---- O'yin ekranini chizish ----
     function renderGame(m) {
+      var phase = m.phase;
+      var alivePlayers = m.players.filter(function (p) { return p.alive; });
+
       document.getElementById("dTitle").textContent = m.disaster.title;
       document.getElementById("dText").textContent = m.disaster.text;
       document.getElementById("capText").textContent = m.capacity;
-      document.getElementById("totText").textContent = m.total;
+      document.getElementById("aliveText").textContent = m.aliveCount;
 
-      // Raund ma'lumoti
-      var doneCount = m.players.filter(function (p) { return p.done; }).length;
-      var allDone = doneCount === m.players.length;
-      document.getElementById("roundTitle").textContent =
-        "🔔 " + m.round + "-raund / " + m.maxRounds;
-      document.getElementById("roundSub").textContent =
-        "Kartasini ochganlar: " + doneCount + " / " + m.players.length;
+      deadline = m.secondsLeft > 0 ? Date.now() + m.secondsLeft * 1000 : 0;
 
-      document.getElementById("myHint").textContent = m.mydone
-        ? "✅ Bu raundda kartangizni ochdingiz. Boshqalarni kuting va bahslashing!"
-        : "👆 Bu raundda bitta kartangizni tanlab, hammaga ochishingiz kerak.";
+      // Bosqich sarlavhasi
+      var title = "", sub = "";
+      var doneCount = alivePlayers.filter(function (p) { return p.done; }).length;
+      var votedCount = alivePlayers.filter(function (p) { return p.voted; }).length;
+      if (phase === "reveal") {
+        title = "🔔 " + m.round + "-raund: kartalarni oching";
+        sub = "Ochganlar: " + doneCount + " / " + alivePlayers.length;
+      } else if (phase === "discuss") {
+        title = "💬 Muhokama";
+        sub = "Bahslashing va o'zingizni himoya qiling!";
+      } else if (phase === "vote") {
+        title = "🗳 Ovoz berish";
+        sub = "Ovoz berganlar: " + votedCount + " / " + alivePlayers.length;
+      } else if (phase === "result") {
+        title = "☠️ " + m.round + "-raund natijasi";
+      } else if (phase === "end") {
+        title = "🏁 O'yin tugadi";
+      }
+      document.getElementById("phaseTitle").textContent = title;
+      document.getElementById("phaseSub").textContent = sub;
+
+      document.getElementById("specBanner").style.display =
+        (!m.myAlive && phase !== "end") ? "block" : "none";
+
+      // Ovoz berish paneli
+      var voteBox = document.getElementById("voteBox");
+      if (phase === "vote") {
+        voteBox.style.display = "block";
+        var vl = document.getElementById("voteList");
+        vl.innerHTML = "";
+        if (!m.myAlive) {
+          document.getElementById("voteHint").textContent = "Siz tomoshabinsiz, ovoz bera olmaysiz.";
+        } else {
+          document.getElementById("voteHint").textContent =
+            "Bittasini tanlang. O'zingizga ovoz bera olmaysiz. Fikringizni o'zgartirishingiz mumkin.";
+          alivePlayers.forEach(function (p) {
+            if (p.id === myId) return;
+            var li = document.createElement("li");
+            if (m.myVote === p.id) li.className = "sel";
+            var nm = document.createElement("span");
+            nm.textContent = p.name;
+            var btn = document.createElement("button");
+            btn.className = "votebtn" + (m.myVote === p.id ? " sel" : "");
+            btn.textContent = m.myVote === p.id ? "✅ Tanlandi" : "🗳 Ovoz";
+            btn.onclick = function () { send({ type: "vote", target: p.id }); };
+            li.appendChild(nm);
+            li.appendChild(btn);
+            vl.appendChild(li);
+          });
+        }
+      } else {
+        voteBox.style.display = "none";
+      }
+
+      // Raund natijasi
+      var resultBox = document.getElementById("resultBox");
+      if (phase === "result" && m.lastResult) {
+        var r = m.lastResult;
+        resultBox.style.display = "block";
+        resultBox.innerHTML = "";
+        var h = document.createElement("h3");
+        h.textContent = "☠️ " + r.name + " bunkerdan haydaldi!";
+        resultBox.appendChild(h);
+        if (r.noVotes) {
+          var n1 = document.createElement("div");
+          n1.className = "note";
+          n1.textContent = "Hech kim ovoz bermadi, shuning uchun tasodifiy tanlandi.";
+          resultBox.appendChild(n1);
+        } else if (r.tie) {
+          var n2 = document.createElement("div");
+          n2.className = "note";
+          n2.textContent = "Ovozlar teng bo'ldi, shuning uchun tasodifiy tanlandi.";
+          resultBox.appendChild(n2);
+        }
+        r.tally.forEach(function (t) {
+          addRow(resultBox, t.name + " — " + t.votes + " ovoz");
+        });
+        if (r.votes.length > 0) {
+          var vh = document.createElement("div");
+          vh.className = "note";
+          vh.style.marginTop = "8px";
+          vh.textContent = "Kim kimga ovoz berdi:";
+          resultBox.appendChild(vh);
+          r.votes.forEach(function (v) {
+            addRow(resultBox, v.from + " → " + v.to);
+          });
+        }
+        var nh = document.createElement("div");
+        nh.className = "note";
+        nh.style.marginTop = "8px";
+        nh.textContent = "Uning hamma kartalari quyidagi ro'yxatda ochildi.";
+        resultBox.appendChild(nh);
+      } else {
+        resultBox.style.display = "none";
+      }
+
+      // Yakun
+      var endBox = document.getElementById("endBox");
+      if (phase === "end" && m.endInfo) {
+        var e = m.endInfo;
+        endBox.style.display = "block";
+        endBox.innerHTML = "";
+        var eh = document.createElement("h3");
+        eh.textContent = "🏆 Bunkerga kirganlar";
+        endBox.appendChild(eh);
+        if (e.winners.length === 0) {
+          addRow(endBox, "Hech kim omon qolmadi.");
+        }
+        e.winners.forEach(function (w) {
+          addRow(endBox, "🏆 " + w.name + (w.id === myId ? " (siz)" : ""));
+        });
+        var sh = document.createElement("div");
+        sh.className = "note";
+        sh.style.marginTop = "10px";
+        sh.textContent = "📊 Statistika · Raundlar: " + e.rounds;
+        endBox.appendChild(sh);
+        e.stats.forEach(function (s) {
+          addRow(endBox, (s.alive ? "✅ " : "☠️ ") + s.name + " — jami " + s.totalVotes + " ovoz oldi");
+        });
+      } else {
+        endBox.style.display = "none";
+      }
 
       // Mening kartalarim
+      var canOpen = phase === "reveal" && m.myAlive && !m.mydone;
+      var hintEl = document.getElementById("myHint");
+      if (phase === "reveal" && m.myAlive) {
+        hintEl.textContent = m.mydone
+          ? "✅ Bu raundda kartangizni ochdingiz. Boshqalarni kuting."
+          : "👆 Bu raundda bitta kartangizni tanlab, hammaga ochishingiz kerak.";
+      } else {
+        hintEl.textContent = "Bu kartalarni faqat siz ko'ryapsiz (ochilganlaridan tashqari).";
+      }
+
       var cards = document.getElementById("myCards");
       cards.innerHTML = "";
       m.me.forEach(function (t, i) {
         var div = document.createElement("div");
         div.className = "card" + (t.key === "secret" ? " secret" : "") + (t.opened ? " opened" : "");
-        div.style.animationDelay = (i * 0.08) + "s";
+        div.style.animationDelay = (i * 0.06) + "s";
 
         var label = document.createElement("div");
         label.className = "clabel";
@@ -533,7 +804,7 @@
           o.className = "copened";
           o.textContent = "✅ Hammaga ochilgan";
           div.appendChild(o);
-        } else if (!m.mydone) {
+        } else if (canOpen) {
           var btn = document.createElement("button");
           btn.className = "openbtn";
           btn.textContent = "👁 Hammaga ochish";
@@ -543,20 +814,32 @@
         cards.appendChild(div);
       });
 
+      // Chat
+      renderChat(m.chat || []);
+      var chatAllowed = m.myAlive && (phase === "reveal" || phase === "discuss" || phase === "vote");
+      document.getElementById("chatRow").style.display = chatAllowed ? "flex" : "none";
+
       // O'yinchilar ro'yxati
       var list = document.getElementById("gamePlayers");
       list.innerHTML = "";
       m.players.forEach(function (p) {
         var li = document.createElement("li");
         if (p.id === myId) li.className = "me";
-        if (!p.online) li.className += " off";
+        if (!p.alive) li.className += " dead";
+        else if (!p.online) li.className += " off";
 
         var left = document.createElement("span");
+        left.className = "pname";
         left.textContent = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
 
         var right = document.createElement("span");
         right.className = "tag";
-        right.textContent = (p.done ? "✅" : "⏳") + (p.id === myId ? " · siz" : "");
+        var tag = "";
+        if (!p.alive) tag = "☠️ haydalgan";
+        else if (phase === "reveal") tag = p.done ? "✅" : "⏳";
+        else if (phase === "vote") tag = p.voted ? "✅ ovoz berdi" : "⏳";
+        if (p.id === myId) tag += (tag ? " · " : "") + "siz";
+        right.textContent = tag;
 
         li.appendChild(left);
         li.appendChild(right);
@@ -569,9 +852,8 @@
             var row = document.createElement("div");
             var b = document.createElement("b");
             b.textContent = p.revealed[k].label + ": ";
-            var v = document.createTextNode(p.revealed[k].value);
             row.appendChild(b);
-            row.appendChild(v);
+            row.appendChild(document.createTextNode(p.revealed[k].value));
             revs.appendChild(row);
           });
           li.appendChild(revs);
@@ -581,21 +863,36 @@
 
       // Xona egasi tugmalari
       var isHost = m.hostId === myId;
+      var skipBtn = document.getElementById("skipBtn");
       var nextBtn = document.getElementById("nextBtn");
-      var nextHint = document.getElementById("nextHint");
+      var hostHint = document.getElementById("hostHint");
+      var backBtn = document.getElementById("backLobbyBtn");
+
+      skipBtn.style.display = "none";
+      nextBtn.style.display = "none";
+      hostHint.textContent = "";
+
       if (isHost) {
-        nextBtn.style.display = "block";
-        nextBtn.disabled = !allDone;
-        nextHint.textContent = allDone
-          ? "Hamma kartasini ochdi. Keyingi raundga o'tishingiz mumkin."
-          : "Hamma kartasini ochishini kuting...";
+        if (phase === "discuss") {
+          skipBtn.style.display = "block";
+          skipBtn.textContent = "⏭ Ovoz berishga o'tish";
+        } else if (phase === "vote") {
+          skipBtn.style.display = "block";
+          skipBtn.textContent = "⏭ Ovozni yakunlash";
+        } else if (phase === "result") {
+          nextBtn.style.display = "block";
+          nextBtn.textContent = m.aliveCount <= m.capacity
+            ? "🏁 O'yinni yakunlash"
+            : "➡️ Keyingi raund";
+        }
+        backBtn.style.display = "block";
+        backBtn.textContent = phase === "end" ? "🔄 Yangi o'yin (lobbiga)" : "🔄 Lobbiga qaytish (test)";
       } else {
-        nextBtn.style.display = "none";
-        nextHint.textContent = allDone
-          ? "Xona egasi keyingi raundni boshlashini kuting..."
-          : "";
+        backBtn.style.display = "none";
+        if (phase === "result") {
+          hostHint.textContent = "Xona egasi davom ettirishini kuting...";
+        }
       }
-      document.getElementById("backLobbyBtn").style.display = isHost ? "block" : "none";
     }
 
     connect();
