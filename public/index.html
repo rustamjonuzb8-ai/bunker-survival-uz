@@ -92,8 +92,8 @@
       border: 1px solid #333;
       border-left: 4px solid #c62828;
       border-radius: 10px;
-      padding: 11px 13px;
-      margin-bottom: 8px;
+      padding: 9px 12px;
+      margin-bottom: 7px;
       text-align: left;
     }
     .players li.me { border-left-color: #ffc400; }
@@ -103,13 +103,15 @@
     .players .tag { font-size: 12px; color: #888; }
     .players .revs {
       width: 100%;
-      margin-top: 8px;
-      padding-top: 8px;
+      margin-top: 7px;
+      padding-top: 7px;
       border-top: 1px solid #2c2c2c;
-      font-size: 13px;
+      font-size: 12px;
       color: #ccc;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px 10px;
     }
-    .players .revs div { margin-bottom: 4px; }
     .players .revs b { color: #ffc400; font-weight: 600; }
 
     /* ===== O'YIN EKRANI (butun ekran) ===== */
@@ -127,32 +129,32 @@
     }
     .ghead {
       flex: 0 0 auto;
-      padding: 10px 14px 8px;
+      padding: 8px 12px 6px;
       background: #141414;
       border-bottom: 1px solid #c62828;
       position: relative;
     }
     .hrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .hdis { font-size: 15px; font-weight: 800; color: #ff5252; cursor: pointer; flex: 1; }
+    .hdis { font-size: 14px; font-weight: 800; color: #ff5252; cursor: pointer; flex: 1; }
     .hmenu {
       background: #2a2a2a;
       color: #ddd;
       border: 1px solid #444;
       border-radius: 8px;
-      font-size: 18px;
-      width: 38px;
-      height: 34px;
+      font-size: 17px;
+      width: 36px;
+      height: 30px;
       cursor: pointer;
     }
-    .hdistext { display: none; font-size: 13px; color: #ddd; line-height: 1.45; margin: 6px 0 2px; }
-    .hphase { font-size: 15px; font-weight: 700; color: #ffc400; margin-top: 4px; }
-    .htimer { font-size: 18px; font-weight: 800; color: #ff5252; min-width: 90px; text-align: right; }
-    .hsub { font-size: 12px; color: #aaa; margin-top: 2px; }
+    .hdistext { display: none; font-size: 12px; color: #ddd; line-height: 1.45; margin: 5px 0 2px; }
+    .hphase { font-size: 14px; font-weight: 700; color: #ffc400; margin-top: 3px; }
+    .htimer { font-size: 17px; font-weight: 800; color: #ff5252; min-width: 80px; text-align: right; }
+    .hsub { font-size: 12px; color: #aaa; margin-top: 1px; }
     .menupanel {
       display: none;
       position: absolute;
       right: 10px;
-      top: 52px;
+      top: 46px;
       background: #1d1d1d;
       border: 1px solid #555;
       border-radius: 12px;
@@ -164,49 +166,53 @@
     .menupanel .btn:last-child { margin-bottom: 0; }
 
     .gmain { flex: 1 1 auto; min-height: 0; position: relative; }
-    .pane { display: none; height: 100%; overflow-y: auto; padding: 12px 14px; -webkit-overflow-scrolling: touch; }
+    .pane { display: none; height: 100%; overflow-y: auto; padding: 8px 12px; -webkit-overflow-scrolling: touch; }
     .pane.active { display: block; }
-    #tabChat.active { display: flex; flex-direction: column; overflow: hidden; }
 
     .gnote {
       background: #1b1b1b;
       border: 1px solid #444;
       border-radius: 10px;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-      font-size: 13px;
+      padding: 7px 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
       color: #ccc;
     }
     .gnote.red { border-color: #c62828; background: #1f1212; color: #ffb3b3; }
     .gnote.gold { border-color: #ffc400; background: #1f1a08; color: #ffe08a; }
 
+    /* Kartalar: 2 ustun */
+    .cardsgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .card {
+      position: relative;
       background: #1b1b1b;
       border: 1px solid #333;
       border-left: 4px solid #ffc400;
       border-radius: 10px;
-      padding: 10px 13px;
-      margin-bottom: 8px;
+      padding: 8px 10px;
+      min-height: 58px;
     }
     .card.secret { border-left-color: #c62828; background: #221414; }
     .card.opened { border-left-color: #2e7d3f; }
-    .card .clabel { font-size: 12px; color: #999; margin-bottom: 2px; }
-    .card .cvalue { font-size: 16px; font-weight: 600; }
-    .card .copened { font-size: 12px; color: #6dff8a; margin-top: 4px; }
-    .openbtn {
-      margin-top: 8px;
-      padding: 9px 14px;
+    .card .clabel { font-size: 11px; color: #999; margin-bottom: 2px; }
+    .card .cvalue { font-size: 14px; font-weight: 600; line-height: 1.25; padding-right: 30px; }
+    .card .copened { position: absolute; top: 7px; right: 8px; font-size: 14px; }
+    .openico {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
       background: #ffc400;
       color: #111;
       border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 700;
+      font-size: 16px;
       cursor: pointer;
     }
-    .openbtn:active { transform: scale(0.96); }
+    .openico:active { transform: scale(0.9); }
     .votebtn {
-      padding: 9px 14px;
+      padding: 8px 12px;
       background: #c62828;
       color: #fff;
       border: none;
@@ -217,25 +223,47 @@
     }
     .votebtn.sel { background: #2e7d3f; }
 
+    /* Chat: doim pastda ko'rinadi */
+    .chatpanel {
+      flex: 0 0 auto;
+      position: relative;
+      padding: 6px 12px;
+      background: #101010;
+      border-top: 1px solid #333;
+    }
     .chatbox {
-      flex: 1 1 auto;
-      min-height: 0;
+      height: 104px;
       overflow-y: auto;
       background: #141414;
       border: 1px solid #333;
       border-radius: 10px;
-      padding: 10px;
-      font-size: 14px;
-      margin-bottom: 8px;
+      padding: 8px 34px 8px 8px;
+      font-size: 13px;
+      margin-bottom: 6px;
     }
-    .msg { margin-bottom: 6px; word-break: break-word; }
-    .msg.sys { color: #aaa; font-style: italic; text-align: center; font-size: 13px; }
+    .chatpanel.big .chatbox { height: 34vh; }
+    .chatexp {
+      position: absolute;
+      top: 10px;
+      right: 18px;
+      width: 28px;
+      height: 26px;
+      background: rgba(40, 40, 40, 0.95);
+      color: #ccc;
+      border: 1px solid #555;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .msg { margin-bottom: 5px; word-break: break-word; }
+    .msg.sys { color: #aaa; font-style: italic; font-size: 12px; }
     .msg b { color: #9ecbff; }
     .msg.mine b { color: #ffc400; }
-    .chatrow { flex: 0 0 auto; display: flex; gap: 8px; }
-    .chatrow input { flex: 1; min-width: 0; margin-bottom: 0; text-align: left; padding: 12px; }
+    .chatrow { display: flex; gap: 8px; }
+    .chatrow input { flex: 1; min-width: 0; margin-bottom: 0; text-align: left; padding: 10px 12px; }
     .chatrow button {
-      padding: 0 20px;
+      padding: 0 18px;
       background: #ffc400;
       color: #111;
       border: none;
@@ -244,7 +272,7 @@
       font-weight: 700;
       cursor: pointer;
     }
-    .chatclosed { flex: 0 0 auto; text-align: center; color: #888; font-size: 13px; padding: 8px; }
+    .chatclosed { text-align: center; color: #888; font-size: 12px; padding: 6px; }
 
     .actionbar {
       flex: 0 0 auto;
@@ -252,7 +280,7 @@
       background: #101010;
       display: none;
     }
-    .actionbar .btn { margin-bottom: 8px; padding: 13px; font-size: 16px; }
+    .actionbar .btn { margin-bottom: 8px; padding: 12px; font-size: 16px; }
     .tabbar {
       flex: 0 0 auto;
       display: flex;
@@ -263,21 +291,20 @@
     .tabbtn {
       flex: 1;
       position: relative;
-      padding: 10px 4px 9px;
+      padding: 11px 4px;
       background: none;
       border: none;
       color: #888;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 700;
       cursor: pointer;
     }
-    .tabbtn .ti { display: block; font-size: 20px; margin-bottom: 2px; }
     .tabbtn.active { color: #ffc400; box-shadow: inset 0 3px 0 #ffc400; }
     .tabbtn .dot {
       display: none;
       position: absolute;
-      top: 6px;
-      left: 55%;
+      top: 5px;
+      right: 18%;
       min-width: 16px;
       height: 16px;
       padding: 0 4px;
@@ -295,9 +322,9 @@
       display: none;
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.82);
+      background: rgba(0, 0, 0, 0.85);
       z-index: 20;
-      padding: 14px;
+      padding: 10px;
       overflow-y: auto;
     }
     .overlay.show { display: block; }
@@ -305,21 +332,21 @@
       background: #1a1414;
       border: 1px solid #c62828;
       border-radius: 14px;
-      padding: 14px;
+      padding: 12px;
       animation: fadeIn 0.35s;
     }
     .obox.gold { border-color: #ffc400; background: #1f1a08; }
-    .obox h3 { font-size: 20px; color: #ff5252; margin-bottom: 8px; }
+    .obox h3 { font-size: 19px; color: #ff5252; margin-bottom: 8px; }
     .obox.gold h3 { color: #ffc400; }
-    .obox .row { font-size: 14px; margin-bottom: 5px; color: #ddd; }
-    .obox .note { font-size: 13px; color: #aaa; margin: 8px 0 6px; }
+    .obox .row { font-size: 14px; margin-bottom: 4px; color: #ddd; }
+    .obox .note { font-size: 13px; color: #aaa; margin: 8px 0 5px; }
     .obox .btn { margin-top: 10px; margin-bottom: 0; }
 
     #toast {
       position: fixed;
       left: 50%;
-      bottom: 90px;
-      transform: translateX(-50%) translateY(150px);
+      bottom: 110px;
+      transform: translateX(-50%) translateY(200px);
       background: #c62828;
       color: #fff;
       padding: 12px 20px;
@@ -388,7 +415,7 @@
         <div class="hsub" id="hSub"></div>
 
         <div class="menupanel" id="menuPanel">
-          <div id="gstatusWrap" class="status" style="margin:0 0 8px;font-size:12px;" ></div>
+          <div id="gstatusWrap" class="status" style="margin:0 0 8px;font-size:12px;"></div>
           <button class="btn gray" id="menuBack" onclick="menuBack()" style="display:none;">🔄 Lobbiga qaytish</button>
           <button class="btn gray" onclick="menuLeave()">⬅️ Xonadan chiqish</button>
         </div>
@@ -397,29 +424,27 @@
       <div class="gmain">
         <div class="pane active" id="tabCards"></div>
         <div class="pane" id="tabPlayers"></div>
-        <div class="pane" id="tabChat">
-          <div class="chatbox" id="chatBox"></div>
-          <div class="chatrow" id="chatRow">
-            <input id="chatInput" type="text" maxlength="200" placeholder="Xabar yozing..." autocomplete="off">
-            <button onclick="sendChat()">➤</button>
-          </div>
-          <div class="chatclosed" id="chatClosed" style="display:none;"></div>
-        </div>
-
         <div class="overlay" id="overlay"></div>
+      </div>
+
+      <div class="chatpanel" id="chatPanel">
+        <div class="chatbox" id="chatBox"></div>
+        <button class="chatexp" onclick="toggleChat()">⤢</button>
+        <div class="chatrow" id="chatRow">
+          <input id="chatInput" type="text" maxlength="200" placeholder="Xabar yozing..." autocomplete="off">
+          <button onclick="sendChat()">➤</button>
+        </div>
+        <div class="chatclosed" id="chatClosed" style="display:none;"></div>
       </div>
 
       <div class="actionbar" id="actionBar"></div>
 
       <div class="tabbar">
         <button class="tabbtn active" id="tbCards" onclick="setTab('cards')">
-          <span class="ti">🪪</span>Karta<span class="dot" id="dotCards">!</span>
+          🪪 Karta<span class="dot" id="dotCards">!</span>
         </button>
         <button class="tabbtn" id="tbPlayers" onclick="setTab('players')">
-          <span class="ti">👥</span>O'yinchilar<span class="dot" id="dotPlayers">!</span>
-        </button>
-        <button class="tabbtn" id="tbChat" onclick="setTab('chat')">
-          <span class="ti">💬</span>Chat<span class="dot" id="dotChat">0</span>
+          👥 O'yinchilar<span class="dot" id="dotPlayers">!</span>
         </button>
       </div>
     </div>
@@ -465,8 +490,6 @@
     var activeTab = "cards";
     var lastPhaseKey = "";
     var dismissedKey = "";
-    var unread = 0;
-    var lastChatSig = "";
     var SCREENS = ["homeScreen", "lobbyScreen", "gameScreen"];
 
     function showScreen(id) {
@@ -478,27 +501,27 @@
 
     function setStatus(ok, text) {
       ["status", "status2", "gstatusWrap"].forEach(function (id) {
-        var el = document.getElementById(id);
-        el.textContent = text;
-        el.className = "status " + (ok ? "ok" : "bad");
+        var e = document.getElementById(id);
+        e.textContent = text;
+        e.className = "status " + (ok ? "ok" : "bad");
       });
     }
 
     var toastTimer = null;
     function toast(text) {
-      var el = document.getElementById("toast");
-      el.textContent = text;
-      el.classList.add("show");
+      var e = document.getElementById("toast");
+      e.textContent = text;
+      e.classList.add("show");
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2800);
+      toastTimer = setTimeout(function () { e.classList.remove("show"); }, 2800);
     }
 
     // Taymer
     setInterval(function () {
-      var el = document.getElementById("hTimer");
-      if (!deadline) { el.textContent = ""; return; }
+      var e = document.getElementById("hTimer");
+      if (!deadline) { e.textContent = ""; return; }
       var s = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      el.textContent = "⏱ " + s + " s";
+      e.textContent = "⏱ " + s + " s";
     }, 500);
 
     // ---- Server bilan aloqa ----
@@ -522,8 +545,6 @@
           deadline = 0;
           lastPhaseKey = "";
           dismissedKey = "";
-          lastChatSig = "";
-          unread = 0;
           renderLobby(m);
           showScreen("lobbyScreen");
         }
@@ -602,12 +623,12 @@
     function skipPhase() { send({ type: "skip" }); }
 
     function toggleDisaster() {
-      var el = document.getElementById("hDisasterText");
-      el.style.display = el.style.display === "block" ? "none" : "block";
+      var e = document.getElementById("hDisasterText");
+      e.style.display = e.style.display === "block" ? "none" : "block";
     }
     function toggleMenu() {
-      var el = document.getElementById("menuPanel");
-      el.style.display = el.style.display === "block" ? "none" : "block";
+      var e = document.getElementById("menuPanel");
+      e.style.display = e.style.display === "block" ? "none" : "block";
     }
     function menuLeave() {
       document.getElementById("menuPanel").style.display = "none";
@@ -616,6 +637,11 @@
     function menuBack() {
       document.getElementById("menuPanel").style.display = "none";
       backToLobby();
+    }
+    function toggleChat() {
+      document.getElementById("chatPanel").classList.toggle("big");
+      var box = document.getElementById("chatBox");
+      box.scrollTop = box.scrollHeight;
     }
 
     function sendChat() {
@@ -655,28 +681,10 @@
     // ---- Tablar ----
     function setTab(name) {
       activeTab = name;
-      var map = { cards: "tabCards", players: "tabPlayers", chat: "tabChat" };
-      var btns = { cards: "tbCards", players: "tbPlayers", chat: "tbChat" };
-      Object.keys(map).forEach(function (k) {
-        document.getElementById(map[k]).classList.toggle("active", k === name);
-        document.getElementById(btns[k]).classList.toggle("active", k === name);
-      });
-      if (name === "chat") {
-        unread = 0;
-        var box = document.getElementById("chatBox");
-        box.scrollTop = box.scrollHeight;
-      }
-      updateChatDot();
-    }
-
-    function updateChatDot() {
-      var d = document.getElementById("dotChat");
-      if (unread > 0 && activeTab !== "chat") {
-        d.textContent = unread > 9 ? "9+" : String(unread);
-        d.classList.add("show");
-      } else {
-        d.classList.remove("show");
-      }
+      document.getElementById("tabCards").classList.toggle("active", name === "cards");
+      document.getElementById("tabPlayers").classList.toggle("active", name === "players");
+      document.getElementById("tbCards").classList.toggle("active", name === "cards");
+      document.getElementById("tbPlayers").classList.toggle("active", name === "players");
     }
 
     // ---- Lobbi chizish ----
@@ -750,7 +758,7 @@
         }
         box.appendChild(d);
       });
-      if (nearBottom || activeTab === "chat") box.scrollTop = box.scrollHeight;
+      if (nearBottom) box.scrollTop = box.scrollHeight;
     }
 
     // ---- O'yin ekranini chizish ----
@@ -763,7 +771,6 @@
 
       deadline = m.secondsLeft > 0 ? Date.now() + m.secondsLeft * 1000 : 0;
 
-      // Tepa qator
       document.getElementById("hDisaster").textContent = m.disaster.title + " ▾";
       document.getElementById("hDisasterText").textContent = m.disaster.text;
 
@@ -775,7 +782,7 @@
         sub = "Ochganlar: " + doneCount + "/" + alive.length;
       } else if (phase === "discuss") {
         title = "💬 Muhokama";
-        sub = "Bahslashing va o'zingizni himoya qiling";
+        sub = "Bahslashing, himoya qiling";
       } else if (phase === "vote") {
         title = "🗳 Ovoz berish";
         sub = "Ovoz berganlar: " + votedCount + "/" + alive.length;
@@ -793,8 +800,7 @@
         lastPhaseKey = phaseKey;
         dismissedKey = "";
         if (phase === "reveal") setTab("cards");
-        else if (phase === "discuss") setTab("chat");
-        else if (phase === "vote" || phase === "result" || phase === "end") setTab("players");
+        else setTab("players");
       }
 
       // Qizil nuqtalar
@@ -803,23 +809,12 @@
       document.getElementById("dotPlayers").classList.toggle(
         "show", phase === "vote" && m.myAlive && !m.myVote);
 
-      // Menyu
       document.getElementById("menuBack").style.display = isHost ? "block" : "none";
 
       renderCardsPane(m);
       renderPlayersPane(m);
 
-      // Chat (yangi xabar belgisi)
-      var chat = m.chat || [];
-      var last = chat.length ? chat[chat.length - 1] : null;
-      var sig = last ? (last.system ? "s" : "u") + (last.name || "") + last.text + chat.length : "";
-      if (sig !== lastChatSig) {
-        lastChatSig = sig;
-        if (last && !last.system && last.id !== myId && activeTab !== "chat") unread += 1;
-      }
-      renderChat(chat);
-      updateChatDot();
-
+      renderChat(m.chat || []);
       var chatAllowed = m.myAlive && (phase === "reveal" || phase === "discuss" || phase === "vote");
       document.getElementById("chatRow").style.display = chatAllowed ? "flex" : "none";
       var closed = document.getElementById("chatClosed");
@@ -827,7 +822,7 @@
         closed.style.display = "none";
       } else {
         closed.style.display = "block";
-        closed.textContent = m.myAlive ? "Chat hozir yopiq" : "Haydalgan o'yinchilar yozа olmaydi";
+        closed.textContent = m.myAlive ? "Chat hozir yopiq" : "Haydalgan o'yinchilar yoza olmaydi";
       }
 
       renderOverlay(m, phaseKey);
@@ -844,25 +839,27 @@
       } else if (phase === "reveal") {
         pane.appendChild(el("div", "gnote gold", m.mydone
           ? "✅ Bu raundda kartangizni ochdingiz. Boshqalarni kuting."
-          : "👆 Bitta kartani tanlab, hammaga ochishingiz kerak."));
+          : "👆 Bitta kartaning 👁 tugmasini bosib, hammaga oching."));
       } else {
         pane.appendChild(el("div", "gnote", "Bu kartalarni faqat siz ko'ryapsiz (ochilganlaridan tashqari)."));
       }
 
       var canOpen = phase === "reveal" && m.myAlive && !m.mydone;
+      var grid = el("div", "cardsgrid");
       m.me.forEach(function (t) {
         var div = el("div", "card" + (t.key === "secret" ? " secret" : "") + (t.opened ? " opened" : ""));
         div.appendChild(el("div", "clabel", t.label));
         div.appendChild(el("div", "cvalue", t.value));
         if (t.opened) {
-          div.appendChild(el("div", "copened", "✅ Hammaga ochilgan"));
+          div.appendChild(el("div", "copened", "✅"));
         } else if (canOpen) {
-          var btn = el("button", "openbtn", "👁 Hammaga ochish");
+          var btn = el("button", "openico", "👁");
           btn.onclick = function () { send({ type: "reveal", key: t.key }); };
           div.appendChild(btn);
         }
-        pane.appendChild(div);
+        grid.appendChild(div);
       });
+      pane.appendChild(grid);
     }
 
     function renderPlayersPane(m) {
@@ -873,7 +870,7 @@
 
       if (phase === "vote") {
         pane.appendChild(el("div", "gnote red", m.myAlive
-          ? "🗳 Kimni bunkerdan haydaymiz? O'yinchi yonidagi tugmani bosing. Fikringizni o'zgartirishingiz mumkin."
+          ? "🗳 Kimni haydaymiz? O'yinchi yonidagi tugmani bosing. Fikringizni o'zgartirishingiz mumkin."
           : "👀 Siz tomoshabinsiz, ovoz bera olmaysiz."));
       }
 
