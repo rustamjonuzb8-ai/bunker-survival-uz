@@ -1,1018 +1,744 @@
 <!DOCTYPE html>
 <html lang="uz">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>BUNKER</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; }
-    body {
-      min-height: 100vh;
-      background: radial-gradient(circle at 50% 0%, #2a2a2a 0%, #121212 60%, #0a0a0a 100%);
-      color: #eee;
-      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-      padding: 20px;
-    }
-    .box { width: 100%; max-width: 420px; margin: 0 auto; text-align: center; }
-    .screen { display: none; }
-    .screen.active { display: block; animation: fadeIn 0.4s; }
-    .icon { font-size: 60px; animation: pulse 2s infinite; margin-top: 10px; }
-    h1 {
-      font-size: 42px;
-      letter-spacing: 8px;
-      color: #ffc400;
-      text-shadow: 0 0 20px rgba(255, 196, 0, 0.4);
-      margin: 8px 0 6px;
-    }
-    .sub { color: #999; margin-bottom: 20px; font-size: 15px; }
-    .status {
-      display: inline-block;
-      padding: 7px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      background: #222;
-      border: 1px solid #444;
-      margin-bottom: 22px;
-    }
-    .status.ok { color: #6dff8a; border-color: #2e7d3f; }
-    .status.bad { color: #ff5252; border-color: #b71c1c; }
-    input {
-      width: 100%;
-      padding: 15px;
-      margin-bottom: 12px;
-      background: #1b1b1b;
-      border: 1px solid #444;
-      border-radius: 12px;
-      color: #fff;
-      font-size: 16px;
-      text-align: center;
-      outline: none;
-    }
-    input:focus { border-color: #ffc400; }
-    input.code { letter-spacing: 6px; text-transform: uppercase; font-weight: 700; }
-    .btn {
-      display: block;
-      width: 100%;
-      padding: 15px;
-      margin-bottom: 12px;
-      border: none;
-      border-radius: 12px;
-      font-size: 17px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .btn.yellow { background: #ffc400; color: #111; }
-    .btn.red { background: #c62828; color: #fff; }
-    .btn.gray { background: #2a2a2a; color: #ddd; border: 1px solid #444; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn:active:not(:disabled) { transform: scale(0.97); }
-    .or { color: #666; margin: 6px 0 12px; font-size: 14px; }
-    .codebox {
-      background: #1b1b1b;
-      border: 2px dashed #ffc400;
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 16px;
-      cursor: pointer;
-    }
-    .codebox small { color: #999; display: block; margin-bottom: 4px; }
-    .codebox .big { font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #ffc400; }
-    .count { color: #aaa; margin-bottom: 10px; font-size: 14px; }
-    .hint { color: #888; font-size: 13px; margin-bottom: 12px; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SECTOR ZERO</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:#0b0b0c; --card:#17171a; --card2:#1f1f24; --line:#2b2b31;
+  --yellow:#f5c518; --red:#e5383b; --blue:#3b82f6; --green:#2fbf71;
+  --text:#ececec; --mut:#8d8d96;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:15px}
+body.night{background:#07080f}
+button{font-family:inherit;font-size:15px;cursor:pointer;border:0;border-radius:10px;color:var(--text)}
+input{font-family:inherit;font-size:16px;color:var(--text);background:#0f0f11;border:1px solid var(--line);
+  border-radius:10px;padding:12px;width:100%;outline:none}
+input:focus{border-color:var(--yellow)}
+input:disabled{opacity:.5}
+.hidden{display:none!important}
 
-    .players { list-style: none; margin-bottom: 10px; }
-    .players li {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      background: #1b1b1b;
-      border: 1px solid #333;
-      border-left: 4px solid #c62828;
-      border-radius: 10px;
-      padding: 9px 12px;
-      margin-bottom: 7px;
-      text-align: left;
-    }
-    .players li.me { border-left-color: #ffc400; }
-    .players li.off { opacity: 0.45; }
-    .players li.dead { opacity: 0.6; border-left-color: #555; background: #151515; }
-    .players li.dead .pname { text-decoration: line-through; }
-    .players .tag { font-size: 12px; color: #888; }
-    .players .revs {
-      width: 100%;
-      margin-top: 7px;
-      padding-top: 7px;
-      border-top: 1px solid #2c2c2c;
-      font-size: 12px;
-      color: #ccc;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 3px 10px;
-    }
-    .players .revs b { color: #ffc400; font-weight: 600; }
+/* umumiy ekranlar */
+.screen{display:none;min-height:100vh;padding:18px 16px 30px;max-width:520px;margin:0 auto}
+.screen.active{display:block}
+#game.screen{max-width:none;margin:0;padding:0}
+.logo{text-align:center;margin:18px 0 6px;font-size:30px;font-weight:900;letter-spacing:3px;color:var(--yellow);
+  text-shadow:0 0 18px rgba(245,197,24,.35)}
+.logo span{color:var(--red)}
+.tag{text-align:center;color:var(--mut);margin-bottom:22px;font-size:13px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.label{color:var(--mut);font-size:12px;margin:0 0 6px;text-transform:uppercase;letter-spacing:1px}
+.btn{width:100%;padding:14px;font-weight:800;background:var(--yellow);color:#111;margin-top:10px}
+.btn.red{background:var(--red);color:#fff}
+.btn.dark{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+.or{text-align:center;color:var(--mut);margin:14px 0 4px;font-size:13px}
+.codebox{text-align:center;font-size:36px;font-weight:900;letter-spacing:8px;color:var(--yellow);
+  background:#0f0f11;border:2px dashed var(--yellow);border-radius:14px;padding:12px;cursor:pointer}
+.hint{color:var(--mut);font-size:12px;text-align:center;margin-top:6px}
+.plist .pl{display:flex;align-items:center;justify-content:space-between;padding:10px 4px;border-bottom:1px solid var(--line)}
+.plist .pl:last-child{border-bottom:0}
+.off{color:var(--mut);font-size:12px}
 
-    /* ===== O'YIN EKRANI (butun ekran) ===== */
-    #gameScreen.active {
-      display: flex;
-      flex-direction: column;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      max-width: 480px;
-      margin: 0 auto;
-      background: radial-gradient(circle at 50% 0%, #2a2a2a 0%, #121212 60%, #0a0a0a 100%);
-      z-index: 5;
-      animation: none;
-      text-align: left;
-    }
-    .ghead {
-      flex: 0 0 auto;
-      padding: 8px 12px 6px;
-      background: #141414;
-      border-bottom: 1px solid #c62828;
-      position: relative;
-    }
-    .hrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .hdis { font-size: 14px; font-weight: 800; color: #ff5252; cursor: pointer; flex: 1; }
-    .hmenu {
-      background: #2a2a2a;
-      color: #ddd;
-      border: 1px solid #444;
-      border-radius: 8px;
-      font-size: 17px;
-      width: 36px;
-      height: 30px;
-      cursor: pointer;
-    }
-    .hdistext { display: none; font-size: 12px; color: #ddd; line-height: 1.45; margin: 5px 0 2px; }
-    .hphase { font-size: 14px; font-weight: 700; color: #ffc400; margin-top: 3px; }
-    .htimer { font-size: 17px; font-weight: 800; color: #ff5252; min-width: 80px; text-align: right; }
-    .hsub { font-size: 12px; color: #aaa; margin-top: 1px; }
-    .menupanel {
-      display: none;
-      position: absolute;
-      right: 10px;
-      top: 46px;
-      background: #1d1d1d;
-      border: 1px solid #555;
-      border-radius: 12px;
-      padding: 8px;
-      z-index: 30;
-      min-width: 220px;
-    }
-    .menupanel .btn { margin-bottom: 6px; padding: 12px; font-size: 15px; }
-    .menupanel .btn:last-child { margin-bottom: 0; }
+/* ulanish chizig'i */
+#conn{position:fixed;top:0;left:0;right:0;z-index:50;background:var(--red);color:#fff;text-align:center;
+  font-size:12px;padding:4px}
 
-    .gmain { flex: 1 1 auto; min-height: 0; position: relative; }
-    .pane { display: none; height: 100%; overflow-y: auto; padding: 8px 12px; -webkit-overflow-scrolling: touch; }
-    .pane.active { display: block; }
+/* toast */
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000;border:1px solid var(--yellow);
+  color:var(--text);padding:10px 16px;border-radius:12px;z-index:100;max-width:88%;text-align:center;display:none;font-size:14px}
 
-    .gnote {
-      background: #1b1b1b;
-      border: 1px solid #444;
-      border-radius: 10px;
-      padding: 7px 10px;
-      margin-bottom: 8px;
-      font-size: 12px;
-      color: #ccc;
-    }
-    .gnote.red { border-color: #c62828; background: #1f1212; color: #ffb3b3; }
-    .gnote.gold { border-color: #ffc400; background: #1f1a08; color: #ffe08a; }
+/* o'yin ekrani */
+#game{position:fixed;inset:0;display:none;flex-direction:column}
+#game.active{display:flex}
+.ghead{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:#0e0e10}
+.gtitle{flex:1;font-weight:800;color:var(--yellow);font-size:15px}
+.gtimer{font-variant-numeric:tabular-nums;font-weight:900;font-size:18px;min-width:44px;text-align:right}
+.gtimer.low{color:var(--red)}
+.menubtn{background:var(--card2);padding:6px 11px;border:1px solid var(--line)}
+.gstrip{padding:5px 10px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line);background:#0e0e10}
+.gmain{flex:1;overflow-y:auto;padding:8px 10px;-webkit-overflow-scrolling:touch}
 
-    /* Kartalar: 2 ustun */
-    .cardsgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .card {
-      position: relative;
-      background: #1b1b1b;
-      border: 1px solid #333;
-      border-left: 4px solid #ffc400;
-      border-radius: 10px;
-      padding: 8px 10px;
-      min-height: 58px;
-    }
-    .card.secret { border-left-color: #c62828; background: #221414; }
-    .card.opened { border-left-color: #2e7d3f; }
-    .card .clabel { font-size: 11px; color: #999; margin-bottom: 2px; }
-    .card .cvalue { font-size: 14px; font-weight: 600; line-height: 1.25; padding-right: 30px; }
-    .card .copened { position: absolute; top: 7px; right: 8px; font-size: 14px; }
-    .openico {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: #ffc400;
-      color: #111;
-      border: none;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .openico:active { transform: scale(0.9); }
-    .votebtn {
-      padding: 8px 12px;
-      background: #c62828;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .votebtn.sel { background: #2e7d3f; }
+.rolecard{border-radius:12px;padding:9px 11px;margin-bottom:8px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+.rolecard.blue{border-color:var(--blue);background:rgba(59,130,246,.08)}
+.rolecard.red{border-color:var(--red);background:rgba(229,56,59,.1)}
+.rolecard .r1{display:flex;justify-content:space-between;align-items:center;font-weight:800}
+.rolecard .r2{font-size:13px;color:#cfcfd6;margin-top:5px}
+.notice{border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:13px;background:var(--card2);border:1px solid var(--line)}
+.notice.warn{border-color:var(--yellow);color:var(--yellow)}
+.notice.bad{border-color:var(--red);color:#ff8a8c}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
+.ptitle{font-weight:800;margin-bottom:8px;font-size:14px}
+.tgrid,.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tbtn{background:var(--card2);border:1px solid var(--line);padding:11px 6px;font-weight:700;font-size:14px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbtn.sel{background:var(--yellow);color:#111;border-color:var(--yellow)}
+.okline{color:var(--green);font-size:12px;margin-top:6px}
+.sub{color:var(--mut);font-size:12px;margin-top:4px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 9px;min-height:64px;
+  display:flex;flex-direction:column;justify-content:space-between}
+.pcard.me{border-color:var(--yellow)}
+.pcard.dead{opacity:.55}
+.pcard .pn{font-weight:800;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .ps{font-size:11px;color:var(--mut);margin:2px 0 5px}
+.pcard .ps.red{color:#ff8a8c}
+.pcard .ps.blue{color:#7fb0ff}
+.vbtn{padding:6px;font-weight:800;background:var(--red);color:#fff;font-size:13px}
+.vbtn.sel{background:var(--green);color:#041}
+.checks div{font-size:13px;padding:2px 0}
 
-    /* Chat: doim pastda ko'rinadi */
-    .chatpanel {
-      flex: 0 0 auto;
-      position: relative;
-      padding: 6px 12px;
-      background: #101010;
-      border-top: 1px solid #333;
-    }
-    .chatbox {
-      height: 104px;
-      overflow-y: auto;
-      background: #141414;
-      border: 1px solid #333;
-      border-radius: 10px;
-      padding: 8px 34px 8px 8px;
-      font-size: 13px;
-      margin-bottom: 6px;
-    }
-    .chatpanel.big .chatbox { height: 34vh; }
-    .chatexp {
-      position: absolute;
-      top: 10px;
-      right: 18px;
-      width: 28px;
-      height: 26px;
-      background: rgba(40, 40, 40, 0.95);
-      color: #ccc;
-      border: 1px solid #555;
-      border-radius: 6px;
-      font-size: 14px;
-      cursor: pointer;
-      z-index: 2;
-    }
-    .msg { margin-bottom: 5px; word-break: break-word; }
-    .msg.sys { color: #aaa; font-style: italic; font-size: 12px; }
-    .msg b { color: #9ecbff; }
-    .msg.mine b { color: #ffc400; }
-    .chatrow { display: flex; gap: 8px; }
-    .chatrow input { flex: 1; min-width: 0; margin-bottom: 0; text-align: left; padding: 10px 12px; }
-    .chatrow button {
-      padding: 0 18px;
-      background: #ffc400;
-      color: #111;
-      border: none;
-      border-radius: 12px;
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .chatclosed { text-align: center; color: #888; font-size: 12px; padding: 6px; }
+.chatpanel{border-top:1px solid var(--line);background:#101012;padding:6px 10px 6px}
+.chathead{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mut);margin-bottom:3px}
+.chathead button{background:none;padding:0 6px;color:var(--mut);font-size:15px}
+#chatbox{height:104px;overflow-y:auto;font-size:13px;-webkit-overflow-scrolling:touch}
+.chatpanel.big #chatbox{height:34vh}
+.msg{padding:2px 0;word-break:break-word}
+.msg b{color:var(--yellow)}
+.msg.mine b{color:var(--green)}
+.msg.sys{color:var(--mut);font-style:italic;text-align:center;font-size:12px}
+.msg.red{color:#ff9a9c}
+.msg.red b{color:var(--red)}
+.chatrow{display:flex;gap:6px;margin-top:5px}
+.chatrow input{padding:9px 11px}
+.chatrow button{background:var(--yellow);color:#111;font-weight:900;padding:0 16px}
+.gbar{display:flex;gap:6px;padding:6px 10px calc(8px + env(safe-area-inset-bottom));background:#0e0e10;border-top:1px solid var(--line)}
+.gbar button{flex:1;padding:12px 6px;font-weight:800;background:var(--card2);border:1px solid var(--line);font-size:14px}
+.gbar button.main{background:var(--yellow);color:#111;border-color:var(--yellow)}
+.gbar button.sel{background:var(--green);color:#041;border-color:var(--green)}
 
-    .actionbar {
-      flex: 0 0 auto;
-      padding: 8px 12px 0;
-      background: #101010;
-      display: none;
-    }
-    .actionbar .btn { margin-bottom: 8px; padding: 12px; font-size: 16px; }
-    .tabbar {
-      flex: 0 0 auto;
-      display: flex;
-      background: #141414;
-      border-top: 1px solid #333;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    .tabbtn {
-      flex: 1;
-      position: relative;
-      padding: 11px 4px;
-      background: none;
-      border: none;
-      color: #888;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .tabbtn.active { color: #ffc400; box-shadow: inset 0 3px 0 #ffc400; }
-    .tabbtn .dot {
-      display: none;
-      position: absolute;
-      top: 5px;
-      right: 18%;
-      min-width: 16px;
-      height: 16px;
-      padding: 0 4px;
-      border-radius: 8px;
-      background: #e53935;
-      color: #fff;
-      font-size: 11px;
-      line-height: 16px;
-      font-weight: 700;
-    }
-    .tabbtn .dot.show { display: block; }
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
+.overlay.show{display:flex}
+.obox{background:var(--card);border:1px solid var(--yellow);border-radius:16px;padding:18px;width:100%;max-width:420px;
+  max-height:88vh;overflow-y:auto;text-align:center}
+.obox.blue{border-color:var(--blue)}
+.obox.red{border-color:var(--red)}
+.obox h2{margin:0 0 6px;font-size:22px}
+.obox .big{font-size:40px;margin:4px 0}
+.obox p{color:#cfcfd6;margin:6px 0}
+.orow{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--line);font-size:14px;text-align:left}
+.orow:last-child{border-bottom:0}
+.c-red{color:#ff8a8c}.c-blue{color:#7fb0ff}.c-yel{color:var(--yellow)}
 
-    /* Natija / yakun oynasi */
-    .overlay {
-      display: none;
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.85);
-      z-index: 20;
-      padding: 10px;
-      overflow-y: auto;
-    }
-    .overlay.show { display: block; }
-    .obox {
-      background: #1a1414;
-      border: 1px solid #c62828;
-      border-radius: 14px;
-      padding: 12px;
-      animation: fadeIn 0.35s;
-    }
-    .obox.gold { border-color: #ffc400; background: #1f1a08; }
-    .obox h3 { font-size: 19px; color: #ff5252; margin-bottom: 8px; }
-    .obox.gold h3 { color: #ffc400; }
-    .obox .row { font-size: 14px; margin-bottom: 4px; color: #ddd; }
-    .obox .note { font-size: 13px; color: #aaa; margin: 8px 0 5px; }
-    .obox .btn { margin-top: 10px; margin-bottom: 0; }
-
-    #toast {
-      position: fixed;
-      left: 50%;
-      bottom: 110px;
-      transform: translateX(-50%) translateY(200px);
-      background: #c62828;
-      color: #fff;
-      padding: 12px 20px;
-      border-radius: 12px;
-      font-size: 15px;
-      max-width: 90%;
-      transition: transform 0.3s;
-      z-index: 50;
-    }
-    #toast.show { transform: translateX(-50%) translateY(0); }
-    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  </style>
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:70;display:none;align-items:flex-end;justify-content:center}
+.sheet.show{display:flex}
+.sbox{background:var(--card);border-top:2px solid var(--yellow);border-radius:16px 16px 0 0;padding:16px;width:100%;
+  max-width:520px;max-height:82vh;overflow-y:auto}
+.sbox h3{margin:0 0 10px;color:var(--yellow)}
+.sbox p{margin:7px 0;font-size:14px;line-height:1.4;color:#d8d8de}
+</style>
 </head>
 <body>
+<div id="conn" class="hidden">Serverga ulanmoqda...</div>
+<div id="toast"></div>
+
+<!-- BOSH SAHIFA -->
+<div id="home" class="screen active">
+  <div class="logo">SECTOR <span>ZERO</span></div>
+  <div class="tag">Yashirin isyonchilar kimligini toping. Ishonmang. Kuzating. Ovoz bering.</div>
   <div class="box">
-
-    <!-- BOSH EKRAN -->
-    <div id="homeScreen" class="screen active">
-      <div class="icon">☢️</div>
-      <h1>BUNKER</h1>
-      <p class="sub">Apokalipsisdan keyin kim omon qoladi?</p>
-      <div id="status" class="status">Serverga ulanmoqda...</div>
-
-      <input id="nameInput" type="text" maxlength="20" placeholder="Ismingiz" autocomplete="off">
-      <button class="btn yellow" onclick="createRoom()">🚪 Xona yaratish</button>
-      <div class="or">— yoki —</div>
-      <input id="codeInput" class="code" type="text" maxlength="5" placeholder="XONA KODI" autocomplete="off">
-      <button class="btn red" onclick="joinRoom()">🔑 Kod bilan kirish</button>
+    <div class="label">Ismingiz</div>
+    <input id="nameInput" maxlength="16" placeholder="Ismingizni yozing" autocomplete="off">
+    <button class="btn" id="createBtn">🛰 Xona yaratish</button>
+    <div class="or">yoki</div>
+    <div class="row">
+      <input id="codeInput" maxlength="5" placeholder="Xona kodi" autocomplete="off" style="text-transform:uppercase;letter-spacing:3px;text-align:center">
+      <button class="btn dark" id="joinBtn" style="margin-top:0">Kirish</button>
     </div>
-
-    <!-- LOBBI EKRANI -->
-    <div id="lobbyScreen" class="screen">
-      <div class="icon">🚪</div>
-      <h1 style="font-size:30px;letter-spacing:5px;">LOBBI</h1>
-      <div id="status2" class="status">Serverga ulanmoqda...</div>
-
-      <div class="codebox" id="codeBox">
-        <small>Xona kodi (bosib nusxalang)</small>
-        <div class="big" id="roomCode">-----</div>
-      </div>
-
-      <button class="btn gray" onclick="inviteFriends()">📨 Do'stlarni taklif qilish</button>
-
-      <div class="count" id="countText"></div>
-      <ul class="players" id="playersList"></ul>
-
-      <button class="btn yellow" id="startBtn" onclick="startGame()" style="display:none;">▶️ O'yinni boshlash</button>
-      <p class="hint" id="hintText"></p>
-      <button class="btn gray" onclick="leaveRoom()">⬅️ Xonadan chiqish</button>
-    </div>
-
-    <!-- O'YIN EKRANI -->
-    <div id="gameScreen" class="screen">
-
-      <div class="ghead">
-        <div class="hrow">
-          <div class="hdis" id="hDisaster" onclick="toggleDisaster()"></div>
-          <button class="hmenu" onclick="toggleMenu()">☰</button>
-        </div>
-        <div class="hdistext" id="hDisasterText"></div>
-        <div class="hrow">
-          <div class="hphase" id="hPhase"></div>
-          <div class="htimer" id="hTimer"></div>
-        </div>
-        <div class="hsub" id="hSub"></div>
-
-        <div class="menupanel" id="menuPanel">
-          <div id="gstatusWrap" class="status" style="margin:0 0 8px;font-size:12px;"></div>
-          <button class="btn gray" id="menuBack" onclick="menuBack()" style="display:none;">🔄 Lobbiga qaytish</button>
-          <button class="btn gray" onclick="menuLeave()">⬅️ Xonadan chiqish</button>
-        </div>
-      </div>
-
-      <div class="gmain">
-        <div class="pane active" id="tabCards"></div>
-        <div class="pane" id="tabPlayers"></div>
-        <div class="overlay" id="overlay"></div>
-      </div>
-
-      <div class="chatpanel" id="chatPanel">
-        <div class="chatbox" id="chatBox"></div>
-        <button class="chatexp" onclick="toggleChat()">⤢</button>
-        <div class="chatrow" id="chatRow">
-          <input id="chatInput" type="text" maxlength="200" placeholder="Xabar yozing..." autocomplete="off">
-          <button onclick="sendChat()">➤</button>
-        </div>
-        <div class="chatclosed" id="chatClosed" style="display:none;"></div>
-      </div>
-
-      <div class="actionbar" id="actionBar"></div>
-
-      <div class="tabbar">
-        <button class="tabbtn active" id="tbCards" onclick="setTab('cards')">
-          🪪 Karta<span class="dot" id="dotCards">!</span>
-        </button>
-        <button class="tabbtn" id="tbPlayers" onclick="setTab('players')">
-          👥 O'yinchilar<span class="dot" id="dotPlayers">!</span>
-        </button>
-      </div>
-    </div>
-
   </div>
+  <button class="btn dark" id="rulesHome">📖 Qoidalar</button>
+</div>
 
-  <div id="toast"></div>
+<!-- LOBBI -->
+<div id="lobby" class="screen">
+  <div class="logo" style="font-size:22px;margin-top:8px">SECTOR <span>ZERO</span></div>
+  <div class="box">
+    <div class="label">Xona kodi (bosib nusxalang)</div>
+    <div class="codebox" id="lobbyCode">-----</div>
+    <button class="btn dark" id="inviteBtn">📨 Do'stlarni taklif qilish</button>
+  </div>
+  <div class="box">
+    <div class="label" id="lobbyCount">O'yinchilar</div>
+    <div class="plist" id="lobbyList"></div>
+  </div>
+  <button class="btn" id="startBtn">▶️ O'yinni boshlash</button>
+  <div class="hint" id="lobbyHint"></div>
+  <div class="row">
+    <button class="btn dark" id="rulesLobby">📖 Qoidalar</button>
+    <button class="btn dark" id="leaveLobby">🚪 Chiqish</button>
+  </div>
+</div>
 
-  <script>
-    var tg = window.Telegram && window.Telegram.WebApp;
-    if (tg) {
-      try { tg.ready(); } catch (e) {}
-      try { tg.expand(); } catch (e) {}
-      try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) {}
+<!-- O'YIN -->
+<div id="game" class="screen">
+  <div class="ghead">
+    <div class="gtitle" id="gTitle"></div>
+    <div class="gtimer" id="gTimer"></div>
+    <button class="menubtn" id="menuBtn">☰</button>
+  </div>
+  <div class="gstrip" id="gStrip"></div>
+  <div class="gmain" id="gMain"></div>
+  <div class="chatpanel" id="chatPanel">
+    <div class="chathead"><span id="chatLabel">💬 Chat</span><button id="chatBig">⤢</button></div>
+    <div id="chatbox"></div>
+    <div class="chatrow">
+      <input id="chatInput" maxlength="200" placeholder="Xabar yozing..." autocomplete="off">
+      <button id="chatSend">➤</button>
+    </div>
+  </div>
+  <div class="gbar" id="gBar"></div>
+</div>
+
+<div class="overlay" id="overlay"><div class="obox" id="obox"></div></div>
+
+<div class="sheet" id="menuSheet">
+  <div class="sbox">
+    <h3>Menyu</h3>
+    <button class="btn dark" id="menuRules">📖 Qoidalar</button>
+    <button class="btn dark" id="menuResult">📊 Rolim va natija</button>
+    <button class="btn red" id="menuLeave">🚪 O'yindan chiqish</button>
+    <button class="btn dark" id="menuClose">Yopish</button>
+  </div>
+</div>
+
+<div class="sheet" id="rulesSheet">
+  <div class="sbox">
+    <h3>📖 SECTOR ZERO qoidalari</h3>
+    <p>🔵 <b>Arxitektorlar</b> — ko'pchilik. Ular Sektor Nolni himoya qiladi, lekin isyonchilar kimligini bilmaydi.</p>
+    <p>🔴 <b>Isyonchilar</b> — kamchilik (taxminan 3 dan 1). Ular bir-birini biladi va Arxitektor kiyimida yashiringan.</p>
+    <p>🌙 <b>Tun:</b> Isyonchilar birgalikda bitta Arxitektorni yo'q qiladi. Maxsus rollar ham harakat qiladi:</p>
+    <p>🔍 <b>Xaker</b> — bitta o'yinchining jamoasini tekshiradi.<br>🛡 <b>Xavfsizlik xodimi</b> — bitta o'yinchini hujumdan himoya qiladi.<br>📡 <b>Diversant</b> (isyonchi) — bitta o'yinchini ertangi ovozdan mahrum qiladi.</p>
+    <p>☀️ <b>Kun:</b> hamma muhokama qiladi (chat), so'ng ovoz beradi. Eng ko'p ovoz olgan o'yinchi chiqariladi va uning jamoasi ochiladi. Ovozlar teng bo'lsa — hech kim chiqmaydi.</p>
+    <p>🏆 <b>G'alaba:</b> barcha isyonchilar chiqarilsa — Arxitektorlar yutadi. Isyonchilar soni Arxitektorlarga teng yoki ko'p bo'lsa — Isyonchilar yutadi.</p>
+    <button class="btn dark" id="rulesClose">Yopish</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+function el(tag, cls, text){
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+// ---------- Telegram ----------
+var tg = window.Telegram && window.Telegram.WebApp;
+try {
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    if (tg.setHeaderColor) tg.setHeaderColor("#0b0b0c");
+    if (tg.setBackgroundColor) tg.setBackgroundColor("#0b0b0c");
+  }
+} catch (e) {}
+
+function lsGet(k){ try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
+
+var tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
+var myId;
+if (tgUser && tgUser.id) {
+  myId = "tg" + tgUser.id;
+} else {
+  myId = lsGet("sz_id");
+  if (!myId) {
+    myId = "u" + Math.random().toString(36).slice(2, 12);
+    lsSet("sz_id", myId);
+  }
+}
+$("nameInput").value = lsGet("sz_name") || (tgUser && tgUser.first_name ? tgUser.first_name.slice(0, 16) : "");
+
+// ---------- Ulanish ----------
+var ws = null;
+var S = null;            // oxirgi o'yin holati
+var endAt = 0;
+var dismissed = {};
+var decoy = null, decoyDay = 0;
+var chatSig = "";
+var overlayWanted = null;
+
+function send(o){
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
+}
+function toast(t){
+  var e = $("toast");
+  e.textContent = t;
+  e.style.display = "block";
+  clearTimeout(toast.t);
+  toast.t = setTimeout(function(){ e.style.display = "none"; }, 2600);
+}
+function connect(){
+  var proto = location.protocol === "https:" ? "wss://" : "ws://";
+  ws = new WebSocket(proto + location.host);
+  ws.onopen = function(){
+    $("conn").classList.add("hidden");
+    var code = lsGet("sz_code");
+    if (code) send({ type: "join", id: myId, name: lsGet("sz_name"), code: code });
+  };
+  ws.onmessage = function(ev){
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    onMsg(m);
+  };
+  ws.onclose = function(){
+    $("conn").classList.remove("hidden");
+    setTimeout(connect, 1500);
+  };
+  ws.onerror = function(){ try { ws.close(); } catch (e) {} };
+}
+
+function showScreen(name){
+  ["home", "lobby", "game"].forEach(function(n){
+    $(n).classList.toggle("active", n === name);
+  });
+  if (name !== "game") {
+    document.body.classList.remove("night");
+    $("overlay").classList.remove("show");
+  }
+}
+
+function onMsg(m){
+  if (m.type === "room") {
+    lsSet("sz_code", m.code);
+    S = null; dismissed = {}; chatSig = "";
+    showScreen("lobby");
+    renderLobby(m);
+  } else if (m.type === "game") {
+    lsSet("sz_code", m.code);
+    renderGame(m);
+  } else if (m.type === "left") {
+    lsSet("sz_code", "");
+    S = null; dismissed = {}; chatSig = "";
+    showScreen("home");
+  } else if (m.type === "error") {
+    toast(m.text);
+    if (m.fatal) {
+      lsSet("sz_code", "");
+      S = null;
+      showScreen("home");
     }
+  }
+}
 
-    // ---- Foydalanuvchi ----
-    var myId = null;
-    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-      myId = "tg" + tg.initDataUnsafe.user.id;
-    } else {
-      try { myId = localStorage.getItem("bunkerId"); } catch (e) {}
-      if (!myId) {
-        myId = "u" + Math.random().toString(36).slice(2, 10);
-        try { localStorage.setItem("bunkerId", myId); } catch (e) {}
-      }
-    }
+// ---------- Bosh sahifa ----------
+function getName(){
+  var n = $("nameInput").value.trim();
+  if (!n) { toast("Avval ismingizni yozing"); return ""; }
+  lsSet("sz_name", n);
+  return n;
+}
+$("createBtn").onclick = function(){
+  var n = getName(); if (!n) return;
+  lsSet("sz_code", "");
+  send({ type: "create", id: myId, name: n });
+};
+$("joinBtn").onclick = function(){
+  var n = getName(); if (!n) return;
+  var c = $("codeInput").value.trim().toUpperCase();
+  if (c.length < 4) { toast("Xona kodini yozing"); return; }
+  send({ type: "join", id: myId, name: n, code: c });
+};
+$("rulesHome").onclick = $("rulesLobby").onclick = function(){ $("rulesSheet").classList.add("show"); };
+$("rulesClose").onclick = function(){ $("rulesSheet").classList.remove("show"); };
 
-    var nameInput = document.getElementById("nameInput");
-    var savedName = "";
-    try { savedName = localStorage.getItem("bunkerName") || ""; } catch (e) {}
-    if (!savedName && tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-      savedName = tg.initDataUnsafe.user.first_name || "";
-    }
-    nameInput.value = savedName;
+// ---------- Lobbi ----------
+function copyText(t){
+  var done = function(){ toast("Nusxalandi: " + t); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(done, function(){ fallbackCopy(t); done(); });
+  } else { fallbackCopy(t); done(); }
+}
+function fallbackCopy(t){
+  var a = document.createElement("textarea");
+  a.value = t; a.style.position = "fixed"; a.style.opacity = "0";
+  document.body.appendChild(a); a.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  document.body.removeChild(a);
+}
+function openLink(u){
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(u);
+  else window.open(u, "_blank");
+}
+var lobbyCode = "";
+$("lobbyCode").onclick = function(){ if (lobbyCode) copyText(lobbyCode); };
+$("inviteBtn").onclick = function(){
+  var link = "https://t.me/Bunkeruz1_bot";
+  var text = "🛰 SECTOR ZERO o'yiniga qo'shiling! Xona kodi: " + lobbyCode;
+  openLink("https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text));
+};
+$("startBtn").onclick = function(){ send({ type: "start" }); };
+$("leaveLobby").onclick = function(){ send({ type: "leave" }); };
 
-    // ---- Holat ----
-    var ws = null;
-    var currentCode = null;
-    var myName = savedName;
-    var deadline = 0;
-    var lastGame = null;
-    var activeTab = "cards";
-    var lastPhaseKey = "";
-    var dismissedKey = "";
-    var SCREENS = ["homeScreen", "lobbyScreen", "gameScreen"];
+function renderLobby(m){
+  lobbyCode = m.code;
+  $("lobbyCode").textContent = m.code;
+  $("lobbyCount").textContent = "O'yinchilar: " + m.players.length + " / " + m.max;
+  var list = $("lobbyList");
+  list.replaceChildren();
+  m.players.forEach(function(p){
+    var r = el("div", "pl");
+    r.appendChild(el("span", "", (p.id === m.hostId ? "👑 " : "👤 ") + p.name + (p.id === m.you ? " (siz)" : "")));
+    if (!p.online) r.appendChild(el("span", "off", "oflayn"));
+    list.appendChild(r);
+  });
+  var st = $("startBtn");
+  st.classList.toggle("hidden", !m.isHost);
+  st.disabled = m.players.length < m.min;
+  $("lobbyHint").textContent = m.isHost
+    ? "Kamida " + m.min + " ta o'yinchi kerak."
+    : "Xona egasi o'yinni boshlashini kuting...";
+}
 
-    function showScreen(id) {
-      SCREENS.forEach(function (s) {
-        document.getElementById(s).classList.remove("active");
-      });
-      document.getElementById(id).classList.add("active");
-    }
+// ---------- O'yin ----------
+var TEAM_NAME = { red: "🔴 Isyonchilar", blue: "🔵 Arxitektorlar" };
+var ROLE_TITLE = {
+  fuqaro: "Oddiy Arxitektor", xaker: "Xaker", xavfsizlik: "Xavfsizlik xodimi",
+  isyonchi: "Isyonchi", diversant: "Diversant"
+};
 
-    function setStatus(ok, text) {
-      ["status", "status2", "gstatusWrap"].forEach(function (id) {
-        var e = document.getElementById(id);
-        e.textContent = text;
-        e.className = "status " + (ok ? "ok" : "bad");
-      });
-    }
+function phaseTitle(s){
+  switch (s.phase) {
+    case "roles": return "🎭 Rollar tarqatildi";
+    case "night": return "🌙 " + s.day + "-tun";
+    case "discuss": return "☀️ " + s.day + "-kun · Muhokama";
+    case "vote": return "🗳 " + s.day + "-kun · Ovoz";
+    case "result": return "📋 " + s.day + "-kun · Natija";
+    case "end": return "🏁 O'yin tugadi";
+  }
+  return "";
+}
 
-    var toastTimer = null;
-    function toast(text) {
-      var e = document.getElementById("toast");
-      e.textContent = text;
-      e.classList.add("show");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(function () { e.classList.remove("show"); }, 2800);
-    }
+function tick(){
+  var t = $("gTimer");
+  if (!endAt) { t.textContent = ""; t.classList.remove("low"); return; }
+  var sec = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+  t.textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+  t.classList.toggle("low", sec <= 10);
+}
+setInterval(tick, 500);
 
-    // Taymer
-    setInterval(function () {
-      var e = document.getElementById("hTimer");
-      if (!deadline) { e.textContent = ""; return; }
-      var s = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      e.textContent = "⏱ " + s + " s";
-    }, 500);
+function renderGame(s){
+  var prevPhase = S ? S.phase + ":" + S.day : "";
+  S = s;
+  showScreen("game");
+  document.body.classList.toggle("night", s.phase === "night");
+  if (decoyDay !== s.day) { decoy = null; decoyDay = s.day; }
 
-    // ---- Server bilan aloqa ----
-    function connect() {
-      var proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(proto + "://" + location.host);
+  $("gTitle").textContent = phaseTitle(s);
+  endAt = s.secondsLeft > 0 ? Date.now() + s.secondsLeft * 1000 : 0;
+  tick();
+  $("gStrip").textContent = "Tirik: " + s.aliveCount + "  ·  🔴 Isyonchilar qoldi: " + s.redLeft + " / " + s.redTotal;
 
-      ws.onopen = function () {
-        setStatus(true, "🟢 Server bilan aloqa bor");
-        if (currentCode) {
-          send({ type: "join", id: myId, name: myName, code: currentCode });
-        }
-      };
+  var main = $("gMain");
+  var sc = main.scrollTop;
+  main.replaceChildren();
+  main.appendChild(roleCard(s));
 
-      ws.onmessage = function (event) {
-        var m;
-        try { m = JSON.parse(event.data); } catch (e) { return; }
+  if (s.me.blocked) {
+    main.appendChild(el("div", "notice bad", "📡 Diversant sizni bugungi ovozdan mahrum qildi. Siz ovoz bera olmaysiz."));
+  }
+  if ((s.phase === "discuss" || s.phase === "vote") && s.lastNight) {
+    main.appendChild(el("div", "notice warn", s.lastNight));
+  }
+  if (s.me.checks && s.me.checks.length) {
+    var cp = el("div", "panel checks");
+    cp.appendChild(el("div", "ptitle", "🔍 Tekshiruv natijalari"));
+    s.me.checks.forEach(function(c){
+      cp.appendChild(el("div", c.team === "red" ? "c-red" : "c-blue",
+        c.day + "-tun: " + c.name + " — " + (c.team === "red" ? "🔴 Isyonchi" : "🔵 Arxitektor")));
+    });
+    main.appendChild(cp);
+  }
 
-        if (m.type === "room") {
-          currentCode = m.code;
-          deadline = 0;
-          lastPhaseKey = "";
-          dismissedKey = "";
-          renderLobby(m);
-          showScreen("lobbyScreen");
-        }
-        if (m.type === "game") {
-          currentCode = m.code;
-          renderGame(m);
-          showScreen("gameScreen");
-        }
-        if (m.type === "error") {
-          toast(m.text);
-          if (m.fatal) {
-            currentCode = null;
-            showScreen("homeScreen");
-          }
-        }
-        if (m.type === "left") {
-          currentCode = null;
-          deadline = 0;
-          lastPhaseKey = "";
-          showScreen("homeScreen");
-        }
-      };
+  if (s.phase === "night") main.appendChild(nightPanel(s));
 
-      ws.onclose = function () {
-        setStatus(false, "🔴 Aloqa uzildi, qayta ulanmoqda...");
-        setTimeout(connect, 2000);
-      };
-      ws.onerror = function () {
-        setStatus(false, "🔴 Serverga ulanib bo'lmadi");
-      };
-    }
+  var grid = el("div", "pgrid");
+  s.players.forEach(function(p){ grid.appendChild(playerCard(s, p)); });
+  main.appendChild(grid);
+  main.scrollTop = sc;
 
-    function send(obj) {
-      if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify(obj));
+  renderChat(s);
+  renderBar(s);
+  renderOverlay(s, prevPhase);
+}
+
+function roleCard(s){
+  var me = s.me;
+  var c = el("div", "rolecard " + me.team);
+  var r1 = el("div", "r1");
+  r1.appendChild(el("span", "", (me.team === "red" ? "🔴 " : "🔵 ") + me.roleTitle));
+  r1.appendChild(el("span", "sub", me.alive ? "ⓘ" : "💀"));
+  c.appendChild(r1);
+  if (!me.alive) {
+    c.appendChild(el("div", "r2", "Siz yo'q qilindingiz. Siz endi kuzatuvchisiz."));
+  } else if (me.mates.length) {
+    c.appendChild(el("div", "r2", "Jamoadoshlar: " + me.mates.map(function(m){
+      return m.name + (m.alive ? "" : " 💀");
+    }).join(", ")));
+  }
+  var d = el("div", "r2 hidden", me.roleDesc);
+  c.appendChild(d);
+  c.onclick = function(){ d.classList.toggle("hidden"); };
+  return c;
+}
+
+function nightPanel(s){
+  var me = s.me;
+  var box = el("div", "panel");
+  if (!me.alive) {
+    box.appendChild(el("div", "ptitle", "🌙 Tun. Shahar uxlamoqda."));
+    box.appendChild(el("div", "sub", "Siz kuzatuvchisiz."));
+    return box;
+  }
+  if (me.actions.length) {
+    me.actions.forEach(function(a){
+      box.appendChild(el("div", "ptitle", a.title));
+      var g = el("div", "tgrid");
+      s.players.filter(function(p){
+        if (!p.alive) return false;
+        if (a.kind === "kill") return p.id !== me.id && !me.mates.some(function(m){ return m.id === p.id; });
+        if (a.kind === "check" || a.kind === "block") return p.id !== me.id;
         return true;
-      }
-      toast("Server bilan aloqa yo'q. Biroz kuting...");
-      return false;
-    }
-
-    function getName() {
-      var name = nameInput.value.trim();
-      if (!name) {
-        toast("Avval ismingizni yozing");
-        nameInput.focus();
-        return null;
-      }
-      myName = name;
-      try { localStorage.setItem("bunkerName", name); } catch (e) {}
-      return name;
-    }
-
-    // ---- Tugmalar ----
-    function createRoom() {
-      var name = getName();
-      if (!name) return;
-      send({ type: "create", id: myId, name: name });
-    }
-
-    function joinRoom() {
-      var name = getName();
-      if (!name) return;
-      var code = document.getElementById("codeInput").value.trim().toUpperCase();
-      if (code.length !== 5) {
-        toast("Xona kodi 5 ta belgidan iborat");
-        return;
-      }
-      send({ type: "join", id: myId, name: name, code: code });
-    }
-
-    function leaveRoom() { send({ type: "leave" }); }
-    function startGame() { send({ type: "start" }); }
-    function backToLobby() { send({ type: "lobby" }); }
-    function nextRound() { send({ type: "nextround" }); }
-    function skipPhase() { send({ type: "skip" }); }
-
-    function toggleDisaster() {
-      var e = document.getElementById("hDisasterText");
-      e.style.display = e.style.display === "block" ? "none" : "block";
-    }
-    function toggleMenu() {
-      var e = document.getElementById("menuPanel");
-      e.style.display = e.style.display === "block" ? "none" : "block";
-    }
-    function menuLeave() {
-      document.getElementById("menuPanel").style.display = "none";
-      leaveRoom();
-    }
-    function menuBack() {
-      document.getElementById("menuPanel").style.display = "none";
-      backToLobby();
-    }
-    function toggleChat() {
-      document.getElementById("chatPanel").classList.toggle("big");
-      var box = document.getElementById("chatBox");
-      box.scrollTop = box.scrollHeight;
-    }
-
-    function sendChat() {
-      var inp = document.getElementById("chatInput");
-      var t = inp.value.trim();
-      if (!t) return;
-      if (send({ type: "chat", text: t })) inp.value = "";
-    }
-    document.getElementById("chatInput").onkeydown = function (e) {
-      if (e.key === "Enter") { e.preventDefault(); sendChat(); }
-    };
-
-    function inviteFriends() {
-      var text = "☢️ BUNKER o'yiniga qo'shil! Xona kodi: " + currentCode;
-      var link = "https://t.me/Bunkeruz1_bot";
-      var url = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text);
-      if (tg && tg.openTelegramLink) {
-        tg.openTelegramLink(url);
-      } else {
-        window.open(url, "_blank");
-      }
-    }
-
-    document.getElementById("codeBox").onclick = function () {
-      var c = currentCode;
-      if (!c) return;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(c).then(
-          function () { toast("Kod nusxalandi: " + c); },
-          function () { toast("Kod: " + c); }
-        );
-      } else {
-        toast("Kod: " + c);
-      }
-    };
-
-    // ---- Tablar ----
-    function setTab(name) {
-      activeTab = name;
-      document.getElementById("tabCards").classList.toggle("active", name === "cards");
-      document.getElementById("tabPlayers").classList.toggle("active", name === "players");
-      document.getElementById("tbCards").classList.toggle("active", name === "cards");
-      document.getElementById("tbPlayers").classList.toggle("active", name === "players");
-    }
-
-    // ---- Lobbi chizish ----
-    function renderLobby(m) {
-      document.getElementById("roomCode").textContent = m.code;
-      document.getElementById("countText").textContent =
-        "O'yinchilar: " + m.players.length + " / " + m.max + " (kamida " + m.min + " kerak)";
-
-      var list = document.getElementById("playersList");
-      list.innerHTML = "";
-      m.players.forEach(function (p) {
-        var li = document.createElement("li");
-        if (p.id === myId) li.className = "me";
-        if (!p.online) li.className += " off";
-
-        var left = document.createElement("span");
-        left.textContent = (p.id === m.hostId ? "👑 " : "👤 ") + p.name;
-
-        var right = document.createElement("span");
-        right.className = "tag";
-        right.textContent = (p.id === myId ? "siz" : "") + (p.online ? "" : " (uzilgan)");
-
-        li.appendChild(left);
-        li.appendChild(right);
-        list.appendChild(li);
+      }).forEach(function(p){
+        var sel = a.target === p.id;
+        var b = el("button", "tbtn" + (sel ? " sel" : ""), p.name + (p.id === me.id ? " (siz)" : "") + (sel ? " ✓" : ""));
+        b.onclick = function(){ send({ type: "act", kind: a.kind, target: p.id }); };
+        g.appendChild(b);
       });
+      box.appendChild(g);
+      if (a.target) box.appendChild(el("div", "okline", "✅ Tanlov qabul qilindi. O'zgartirishingiz mumkin."));
+    });
+    if (me.team === "red" && me.teamPicks.length > 1) {
+      var pk = el("div", "sub", "Jamoa tanlovi: " + me.teamPicks.map(function(x){
+        return x.by + " → " + (x.target || "…");
+      }).join(" · "));
+      box.appendChild(pk);
+    }
+    if (me.team === "red") box.appendChild(el("div", "sub", "Isyonchilar chatidan foydalaning: kelishib oling."));
+  } else {
+    box.appendChild(el("div", "ptitle", "🌙 Shahar uxlamoqda. Kimdan shubhalanasiz?"));
+    box.appendChild(el("div", "sub", "Faqat o'zingiz uchun belgi. Hech kimga ko'rinmaydi."));
+    var g2 = el("div", "tgrid");
+    g2.style.marginTop = "8px";
+    s.players.filter(function(p){ return p.alive && p.id !== me.id; }).forEach(function(p){
+      var sel = decoy === p.id;
+      var b = el("button", "tbtn" + (sel ? " sel" : ""), p.name + (sel ? " ✓" : ""));
+      b.onclick = function(){ decoy = p.id; renderGame(S); };
+      g2.appendChild(b);
+    });
+    box.appendChild(g2);
+  }
+  return box;
+}
 
-      var startBtn = document.getElementById("startBtn");
-      var hint = document.getElementById("hintText");
-      var isHost = m.hostId === myId;
-      if (isHost) {
-        startBtn.style.display = "block";
-        startBtn.disabled = m.players.length < m.min;
-        hint.textContent = m.players.length < m.min
-          ? "Boshlash uchun yana " + (m.min - m.players.length) + " ta o'yinchi kerak"
-          : "Hammasi tayyor!";
+function playerCard(s, p){
+  var me = s.me;
+  var c = el("div", "pcard" + (p.alive ? "" : " dead") + (p.id === me.id ? " me" : ""));
+  var top = el("div");
+  top.appendChild(el("div", "pn", (p.id === s.hostId ? "👑 " : "") + p.name + (p.id === me.id ? " (siz)" : "") + (p.online ? "" : " 📴")));
+  var cls = "ps";
+  var txt;
+  if (s.phase === "end") {
+    txt = (p.team === "red" ? "🔴 " : "🔵 ") + (ROLE_TITLE[p.role] || "") + (p.alive ? "" : " 💀");
+    cls += p.team === "red" ? " red" : " blue";
+  } else if (!p.alive) {
+    if (p.team) { txt = (p.team === "red" ? "🔴 Isyonchi" : "🔵 Arxitektor") + " · chiqarilgan"; cls += p.team === "red" ? " red" : " blue"; }
+    else txt = "💀 Yo'q qilingan";
+  } else if (me.mates.some(function(m){ return m.id === p.id; })) {
+    txt = "🔴 jamoadosh"; cls += " red";
+  } else if (s.phase === "vote" && p.voted) {
+    txt = "✔ ovoz berdi";
+  } else {
+    txt = "Tirik";
+  }
+  top.appendChild(el("div", cls, txt));
+  c.appendChild(top);
+
+  if (s.phase === "vote" && me.alive && !me.blocked && p.alive && p.id !== me.id) {
+    var sel = s.myVote === p.id;
+    var b = el("button", "vbtn" + (sel ? " sel" : ""), sel ? "✅ Tanlandi" : "🗳 Ovoz");
+    b.onclick = function(){ send({ type: "vote", target: p.id }); };
+    c.appendChild(b);
+  }
+  return c;
+}
+
+// ---------- Chat ----------
+function renderChat(s){
+  var box = $("chatbox");
+  var last = s.chat.length ? s.chat[s.chat.length - 1].ts : 0;
+  var sig = s.chat.length + "|" + last;
+  if (sig !== chatSig) {
+    var near = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+    box.replaceChildren();
+    s.chat.forEach(function(c){
+      if (c.kind === "sys") {
+        box.appendChild(el("div", "msg sys", c.text));
       } else {
-        startBtn.style.display = "none";
-        hint.textContent = "Xona egasi o'yinni boshlashini kuting...";
-      }
-    }
-
-    // ---- Yordamchilar ----
-    function el(tag, cls, text) {
-      var d = document.createElement(tag);
-      if (cls) d.className = cls;
-      if (text !== undefined) d.textContent = text;
-      return d;
-    }
-
-    function makeBtn(text, cls, handler) {
-      var b = el("button", "btn " + cls, text);
-      b.onclick = handler;
-      return b;
-    }
-
-    // ---- Chat ----
-    function renderChat(list) {
-      var box = document.getElementById("chatBox");
-      var nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      box.innerHTML = "";
-      list.forEach(function (c) {
-        var d = el("div", "msg");
-        if (c.system) {
-          d.className = "msg sys";
-          d.textContent = c.text;
-        } else {
-          d.className = "msg" + (c.id === myId ? " mine" : "");
-          d.appendChild(el("b", "", c.name + ": "));
-          d.appendChild(document.createTextNode(c.text));
-        }
+        var d = el("div", "msg" + (c.kind === "red" ? " red" : "") + (c.fromId === myId ? " mine" : ""));
+        d.appendChild(el("b", "", (c.kind === "red" ? "🔴 " : "") + c.from + ": "));
+        d.appendChild(document.createTextNode(c.text));
         box.appendChild(d);
-      });
-      if (nearBottom) box.scrollTop = box.scrollHeight;
+      }
+    });
+    if (near || chatSig === "") box.scrollTop = box.scrollHeight;
+    chatSig = sig;
+  }
+  var inp = $("chatInput");
+  var label = $("chatLabel");
+  if (s.canChat) {
+    inp.disabled = false; inp.placeholder = "Xabar yozing...";
+    label.textContent = "💬 Chat";
+  } else if (s.canRedChat) {
+    inp.disabled = false; inp.placeholder = "🔴 Isyonchilar maxfiy chati...";
+    label.textContent = "🔴 Maxfiy chat (faqat isyonchilar)";
+  } else {
+    inp.disabled = true;
+    label.textContent = "💬 Chat";
+    if (!s.me.alive) inp.placeholder = "💀 Siz xabar yoza olmaysiz";
+    else if (s.phase === "night") inp.placeholder = "🌙 Tunda chat yopiq";
+    else if (s.phase === "end") inp.placeholder = "O'yin tugadi";
+    else inp.placeholder = "Chat tez orada ochiladi";
+  }
+  $("chatSend").disabled = inp.disabled;
+}
+function sendChat(){
+  var inp = $("chatInput");
+  var t = inp.value.trim();
+  if (!t || inp.disabled) return;
+  send({ type: "chat", text: t });
+  inp.value = "";
+}
+$("chatSend").onclick = sendChat;
+$("chatInput").addEventListener("keydown", function(e){ if (e.key === "Enter") sendChat(); });
+$("chatBig").onclick = function(){ $("chatPanel").classList.toggle("big"); var b = $("chatbox"); b.scrollTop = b.scrollHeight; };
+
+// ---------- Pastki tugmalar ----------
+function addBtn(bar, text, cls, fn){
+  var b = el("button", cls || "", text);
+  b.onclick = fn;
+  bar.appendChild(b);
+}
+function renderBar(s){
+  var bar = $("gBar");
+  bar.replaceChildren();
+  if (s.phase === "vote" && s.me.alive && !s.me.blocked) {
+    var ab = s.myVote === "abstain";
+    addBtn(bar, ab ? "✅ Betaraf qoldingiz" : "🤐 Betaraf qolish", ab ? "sel" : "", function(){ send({ type: "abstain" }); });
+  }
+  if (s.isHost) {
+    if (s.phase === "roles") addBtn(bar, "⏭ Tunni boshlash", "main", function(){ send({ type: "next" }); });
+    if (s.phase === "discuss") addBtn(bar, "⏭ Ovozga o'tish", "main", function(){ send({ type: "next" }); });
+    if (s.phase === "vote") addBtn(bar, "⏭ Ovozni yakunlash", "main", function(){ send({ type: "next" }); });
+    if (s.phase === "result") addBtn(bar, "⏭ Keyingi tun", "main", function(){ send({ type: "next" }); });
+  }
+  if (s.phase === "end") {
+    addBtn(bar, "📊 Natija", "", function(){ delete dismissed["end"]; renderOverlay(S, "force"); });
+    if (s.isHost) addBtn(bar, "🔁 Yangi o'yin", "main", function(){ send({ type: "lobby" }); });
+  }
+  bar.classList.toggle("hidden", bar.children.length === 0);
+}
+
+// ---------- Oynalar ----------
+function renderOverlay(s, prev){
+  var ov = $("overlay");
+  var box = $("obox");
+  var key = null;
+  if (s.phase === "roles") key = "roles";
+  else if (s.phase === "result" && s.lastResult) key = "result:" + s.day;
+  else if (s.phase === "end") key = "end";
+  if (!key || (dismissed[key] && prev !== "force")) { ov.classList.remove("show"); return; }
+  box.replaceChildren();
+  box.className = "obox";
+  var close = function(){ dismissed[key] = true; ov.classList.remove("show"); };
+
+  if (key === "roles") {
+    var me = s.me;
+    box.classList.add(me.team);
+    box.appendChild(el("div", "big", me.team === "red" ? "🔴" : "🔵"));
+    box.appendChild(el("h2", me.team === "red" ? "c-red" : "c-blue", me.roleTitle));
+    box.appendChild(el("p", "c-yel", "Jamoa: " + TEAM_NAME[me.team]));
+    box.appendChild(el("p", "", me.roleDesc));
+    if (me.mates.length) box.appendChild(el("p", "c-red", "Jamoadoshlar: " + me.mates.map(function(m){ return m.name; }).join(", ")));
+    else if (me.team === "red") box.appendChild(el("p", "c-red", "Siz yagona isyonchisiz!"));
+    else box.appendChild(el("p", "sub", "Isyonchilar kimligini bilmaysiz. Hamma shubha ostida."));
+    var b = el("button", "btn", "Tushunarli");
+    b.onclick = close;
+    box.appendChild(b);
+  } else if (key.indexOf("result") === 0) {
+    box.appendChild(el("div", "big", "🗳"));
+    box.appendChild(el("h2", "c-yel", "Ovoz natijasi"));
+    box.appendChild(el("p", "", s.lastResult.text));
+    s.lastResult.tally.forEach(function(t){
+      var r = el("div", "orow");
+      r.appendChild(el("span", "", t.name));
+      r.appendChild(el("span", "c-yel", t.count + " ovoz"));
+      box.appendChild(r);
+    });
+    var b2 = el("button", "btn", "Yopish");
+    b2.onclick = close;
+    box.appendChild(b2);
+  } else {
+    var win = s.endInfo.winner;
+    box.classList.add(win);
+    box.appendChild(el("div", "big", win === "red" ? "🔴" : "🔵"));
+    box.appendChild(el("h2", win === "red" ? "c-red" : "c-blue", win === "red" ? "Isyonchilar yutdi!" : "Arxitektorlar yutdi!"));
+    box.appendChild(el("p", "", s.endInfo.text));
+    box.appendChild(el("div", "label", "Barcha rollar"));
+    s.players.forEach(function(p){
+      var r = el("div", "orow");
+      r.appendChild(el("span", p.team === "red" ? "c-red" : "c-blue", (p.team === "red" ? "🔴 " : "🔵 ") + p.name));
+      r.appendChild(el("span", "sub", (ROLE_TITLE[p.role] || "") + (p.alive ? "" : " 💀")));
+      box.appendChild(r);
+    });
+    if (s.isHost) {
+      var nb = el("button", "btn", "🔁 Yangi o'yin (lobbiga qaytish)");
+      nb.onclick = function(){ send({ type: "lobby" }); };
+      box.appendChild(nb);
     }
+    var cb = el("button", "btn dark", "Yopish");
+    cb.onclick = close;
+    box.appendChild(cb);
+  }
+  ov.classList.add("show");
+}
 
-    // ---- O'yin ekranini chizish ----
-    function renderGame(m) {
-      lastGame = m;
-      var phase = m.phase;
-      var alive = m.players.filter(function (p) { return p.alive; });
-      var isHost = m.hostId === myId;
-      var phaseKey = phase + ":" + m.round;
+// ---------- Menyu ----------
+$("menuBtn").onclick = function(){ $("menuSheet").classList.add("show"); };
+$("menuClose").onclick = function(){ $("menuSheet").classList.remove("show"); };
+$("menuRules").onclick = function(){ $("menuSheet").classList.remove("show"); $("rulesSheet").classList.add("show"); };
+$("menuResult").onclick = function(){
+  $("menuSheet").classList.remove("show");
+  if (!S) return;
+  if (S.phase === "end") { delete dismissed["end"]; renderOverlay(S, "force"); return; }
+  delete dismissed["roles"];
+  var old = S.phase;
+  // rolni qayta ko'rsatish
+  var tmp = JSON.parse(JSON.stringify(S));
+  tmp.phase = "roles";
+  renderOverlay(tmp, "force");
+  S.phase = old;
+};
+$("menuLeave").onclick = function(){
+  $("menuSheet").classList.remove("show");
+  if (confirm("O'yindan chiqmoqchimisiz? Qaytib kira olmaysiz.")) send({ type: "leave" });
+};
 
-      deadline = m.secondsLeft > 0 ? Date.now() + m.secondsLeft * 1000 : 0;
+// Klaviatura ochilganda sahifa siljimasligi uchun
+window.addEventListener("resize", function(){ window.scrollTo(0, 0); });
 
-      document.getElementById("hDisaster").textContent = m.disaster.title + " ▾";
-      document.getElementById("hDisasterText").textContent = m.disaster.text;
-
-      var doneCount = alive.filter(function (p) { return p.done; }).length;
-      var votedCount = alive.filter(function (p) { return p.voted; }).length;
-      var title = "", sub = "";
-      if (phase === "reveal") {
-        title = "🔔 " + m.round + "-raund: kartani oching";
-        sub = "Ochganlar: " + doneCount + "/" + alive.length;
-      } else if (phase === "discuss") {
-        title = "💬 Muhokama";
-        sub = "Bahslashing, himoya qiling";
-      } else if (phase === "vote") {
-        title = "🗳 Ovoz berish";
-        sub = "Ovoz berganlar: " + votedCount + "/" + alive.length;
-      } else if (phase === "result") {
-        title = "☠️ " + m.round + "-raund natijasi";
-      } else if (phase === "end") {
-        title = "🏁 O'yin tugadi";
-      }
-      document.getElementById("hPhase").textContent = title;
-      document.getElementById("hSub").textContent =
-        "🛡 Joy: " + m.capacity + " · Tirik: " + m.aliveCount + (sub ? " · " + sub : "");
-
-      // Bosqich o'zgarsa kerakli tabni ochamiz
-      if (phaseKey !== lastPhaseKey) {
-        lastPhaseKey = phaseKey;
-        dismissedKey = "";
-        if (phase === "reveal") setTab("cards");
-        else setTab("players");
-      }
-
-      // Qizil nuqtalar
-      document.getElementById("dotCards").classList.toggle(
-        "show", phase === "reveal" && m.myAlive && !m.mydone);
-      document.getElementById("dotPlayers").classList.toggle(
-        "show", phase === "vote" && m.myAlive && !m.myVote);
-
-      document.getElementById("menuBack").style.display = isHost ? "block" : "none";
-
-      renderCardsPane(m);
-      renderPlayersPane(m);
-
-      renderChat(m.chat || []);
-      var chatAllowed = m.myAlive && (phase === "reveal" || phase === "discuss" || phase === "vote");
-      document.getElementById("chatRow").style.display = chatAllowed ? "flex" : "none";
-      var closed = document.getElementById("chatClosed");
-      if (chatAllowed) {
-        closed.style.display = "none";
-      } else {
-        closed.style.display = "block";
-        closed.textContent = m.myAlive ? "Chat hozir yopiq" : "Haydalgan o'yinchilar yoza olmaydi";
-      }
-
-      renderOverlay(m, phaseKey);
-      renderActionBar(m, phaseKey, isHost);
-    }
-
-    function renderCardsPane(m) {
-      var pane = document.getElementById("tabCards");
-      var phase = m.phase;
-      pane.innerHTML = "";
-
-      if (!m.myAlive && phase !== "end") {
-        pane.appendChild(el("div", "gnote red", "👀 Siz bunkerdan haydalgansiz. Faqat tomosha qila olasiz."));
-      } else if (phase === "reveal") {
-        pane.appendChild(el("div", "gnote gold", m.mydone
-          ? "✅ Bu raundda kartangizni ochdingiz. Boshqalarni kuting."
-          : "👆 Bitta kartaning 👁 tugmasini bosib, hammaga oching."));
-      } else {
-        pane.appendChild(el("div", "gnote", "Bu kartalarni faqat siz ko'ryapsiz (ochilganlaridan tashqari)."));
-      }
-
-      var canOpen = phase === "reveal" && m.myAlive && !m.mydone;
-      var grid = el("div", "cardsgrid");
-      m.me.forEach(function (t) {
-        var div = el("div", "card" + (t.key === "secret" ? " secret" : "") + (t.opened ? " opened" : ""));
-        div.appendChild(el("div", "clabel", t.label));
-        div.appendChild(el("div", "cvalue", t.value));
-        if (t.opened) {
-          div.appendChild(el("div", "copened", "✅"));
-        } else if (canOpen) {
-          var btn = el("button", "openico", "👁");
-          btn.onclick = function () { send({ type: "reveal", key: t.key }); };
-          div.appendChild(btn);
-        }
-        grid.appendChild(div);
-      });
-      pane.appendChild(grid);
-    }
-
-    function renderPlayersPane(m) {
-      var pane = document.getElementById("tabPlayers");
-      var phase = m.phase;
-      var scroll = pane.scrollTop;
-      pane.innerHTML = "";
-
-      if (phase === "vote") {
-        pane.appendChild(el("div", "gnote red", m.myAlive
-          ? "🗳 Kimni haydaymiz? O'yinchi yonidagi tugmani bosing. Fikringizni o'zgartirishingiz mumkin."
-          : "👀 Siz tomoshabinsiz, ovoz bera olmaysiz."));
-      }
-
-      var ul = el("ul", "players");
-      m.players.forEach(function (p) {
-        var li = el("li", "");
-        if (p.id === myId) li.className = "me";
-        if (!p.alive) li.className += " dead";
-        else if (!p.online) li.className += " off";
-
-        li.appendChild(el("span", "pname", (p.id === m.hostId ? "👑 " : "👤 ") + p.name));
-
-        var canVote = phase === "vote" && m.myAlive && p.alive && p.id !== myId;
-        if (canVote) {
-          var btn = el("button", "votebtn" + (m.myVote === p.id ? " sel" : ""),
-            m.myVote === p.id ? "✅ Tanlandi" : "🗳 Ovoz");
-          btn.onclick = function () { send({ type: "vote", target: p.id }); };
-          li.appendChild(btn);
-        } else {
-          var tag = "";
-          if (!p.alive) tag = "☠️ haydalgan";
-          else if (phase === "reveal") tag = p.done ? "✅" : "⏳";
-          else if (phase === "vote") tag = p.voted ? "✅ ovoz berdi" : "⏳";
-          if (p.id === myId) tag += (tag ? " · " : "") + "siz";
-          li.appendChild(el("span", "tag", tag));
-        }
-
-        var keys = Object.keys(p.revealed || {});
-        if (keys.length > 0) {
-          var revs = el("div", "revs");
-          keys.forEach(function (k) {
-            var row = el("div", "");
-            row.appendChild(el("b", "", p.revealed[k].label + ": "));
-            row.appendChild(document.createTextNode(p.revealed[k].value));
-            revs.appendChild(row);
-          });
-          li.appendChild(revs);
-        }
-        ul.appendChild(li);
-      });
-      pane.appendChild(ul);
-      pane.scrollTop = scroll;
-    }
-
-    function renderOverlay(m, phaseKey) {
-      var ov = document.getElementById("overlay");
-      var phase = m.phase;
-      var isHost = m.hostId === myId;
-      var wanted = (phase === "result" && m.lastResult) || (phase === "end" && m.endInfo);
-      if (!wanted || dismissedKey === phaseKey) {
-        ov.classList.remove("show");
-        ov.innerHTML = "";
-        return;
-      }
-      ov.innerHTML = "";
-      ov.classList.add("show");
-
-      if (phase === "result") {
-        var r = m.lastResult;
-        var box = el("div", "obox");
-        box.appendChild(el("h3", "", "☠️ " + r.name + " bunkerdan haydaldi!"));
-        if (r.noVotes) box.appendChild(el("div", "note", "Hech kim ovoz bermadi, shuning uchun tasodifiy tanlandi."));
-        else if (r.tie) box.appendChild(el("div", "note", "Ovozlar teng bo'ldi, shuning uchun tasodifiy tanlandi."));
-        r.tally.forEach(function (t) {
-          box.appendChild(el("div", "row", t.name + " — " + t.votes + " ovoz"));
-        });
-        if (r.votes.length > 0) {
-          box.appendChild(el("div", "note", "Kim kimga ovoz berdi:"));
-          r.votes.forEach(function (v) {
-            box.appendChild(el("div", "row", v.from + " → " + v.to));
-          });
-        }
-        box.appendChild(el("div", "note", "Uning hamma kartalari «O'yinchilar» tabida ochildi."));
-        if (isHost) {
-          box.appendChild(makeBtn(
-            m.aliveCount <= m.capacity ? "🏁 O'yinni yakunlash" : "➡️ Keyingi raund",
-            "yellow", nextRound));
-        } else {
-          box.appendChild(el("div", "note", "Xona egasi davom ettirishini kuting..."));
-        }
-        box.appendChild(makeBtn("✖ Yopish", "gray", function () {
-          dismissedKey = phaseKey;
-          renderGame(lastGame);
-        }));
-        ov.appendChild(box);
-      } else {
-        var e = m.endInfo;
-        var eb = el("div", "obox gold");
-        eb.appendChild(el("h3", "", "🏆 Bunkerga kirganlar"));
-        if (e.winners.length === 0) eb.appendChild(el("div", "row", "Hech kim omon qolmadi."));
-        e.winners.forEach(function (w) {
-          eb.appendChild(el("div", "row", "🏆 " + w.name + (w.id === myId ? " (siz)" : "")));
-        });
-        eb.appendChild(el("div", "note", "📊 Statistika · Raundlar: " + e.rounds));
-        e.stats.forEach(function (s) {
-          eb.appendChild(el("div", "row",
-            (s.alive ? "✅ " : "☠️ ") + s.name + " — jami " + s.totalVotes + " ovoz oldi"));
-        });
-        if (isHost) eb.appendChild(makeBtn("🔄 Yangi o'yin (lobbiga)", "yellow", backToLobby));
-        eb.appendChild(makeBtn("⬅️ Xonadan chiqish", "gray", leaveRoom));
-        eb.appendChild(makeBtn("✖ Yopish", "gray", function () {
-          dismissedKey = phaseKey;
-          renderGame(lastGame);
-        }));
-        ov.appendChild(eb);
-      }
-    }
-
-    function renderActionBar(m, phaseKey, isHost) {
-      var bar = document.getElementById("actionBar");
-      var phase = m.phase;
-      bar.innerHTML = "";
-      var any = false;
-
-      if (isHost && phase === "discuss") {
-        bar.appendChild(makeBtn("⏭ Ovoz berishga o'tish", "yellow", skipPhase));
-        any = true;
-      } else if (isHost && phase === "vote") {
-        bar.appendChild(makeBtn("⏭ Ovozni yakunlash", "yellow", skipPhase));
-        any = true;
-      } else if (phase === "result" && dismissedKey === phaseKey) {
-        if (isHost) {
-          bar.appendChild(makeBtn(
-            m.aliveCount <= m.capacity ? "🏁 O'yinni yakunlash" : "➡️ Keyingi raund",
-            "yellow", nextRound));
-        }
-        bar.appendChild(makeBtn("📊 Natijani ko'rish", "gray", function () {
-          dismissedKey = "";
-          renderGame(lastGame);
-        }));
-        any = true;
-      } else if (phase === "end" && dismissedKey === phaseKey) {
-        bar.appendChild(makeBtn("🏆 Yakunni ko'rish", "gray", function () {
-          dismissedKey = "";
-          renderGame(lastGame);
-        }));
-        any = true;
-      }
-      bar.style.display = any ? "block" : "none";
-    }
-
-    connect();
-  </script>
+connect();
+})();
+</script>
 </body>
 </html>
