@@ -22,7 +22,7 @@ const TRAITS = ['Sabrli', 'Jizzaki', 'Yetakchi', 'Qo\'rqoq', 'Aqlli', 'Yolg\'onc
 const HOBBIES = ['Baliq ovi', 'Shaxmat', 'Gitara', 'Bog\'dorchilik', 'Kitob o\'qish', 'Sport', 'Rasm chizish', 'Pishirish', 'Sayohat', 'Tikuvchilik'];
 const ITEMS = ['Birinchi yordam qutisi', 'Pichoq', 'Urug\'lar to\'plami', 'Radio', 'Gitara', 'Fonar', 'Kitoblar', 'Ichimlik suvi', 'Asboblar qutisi', 'Gugurt va chaqmoq'];
 const BAGGAGE = ['Konserva zaxirasi (3 oylik)', 'Dori-darmonlar sumkasi', 'Quyosh paneli', 'Kichik generator', 'Suv tozalash filtri', 'Sabzavot urug\'lari qopi', 'Kitoblar qutisi', 'Ko\'rpa-to\'shak va kiyimlar', 'Radiostansiya', 'Ov miltig\'i o\'rniga arbalet', 'Oilaviy rasmlar albomi', 'Bo\'sh chamadon', 'Mototsikl ehtiyot qismlari', 'Qadimiy xarita va kompas'];
-const SECRETS = ['Aslida soxta diplom bilan ishlagan', 'Jinoyat sodir etgan', 'Bepusht', 'Yashirincha kasal', 'Boshqalarni ayg\'oqchilik qilgan', 'Hech kimga aytilmagan qarzi bor', 'Oziq-ovqatni yashirib saqlagan', 'Aslida ismi boshqa'];
+const SECRETS = ['Aslida soxta diplom bilan ishlagan', 'Jinoyat sodir etgan', 'Bepusht', 'Yashirincha kasal', 'Yashirincha boshqalarni kuzatib, sirlarini yig\'ib yurgan', 'Hech kimga aytilmagan qarzi bor', 'Oziq-ovqatni yashirib saqlagan', 'Aslida ismi boshqa'];
 const DISASTERS = [
   'Yadro urushi: tashqarida radiatsiya, 5 yil yashash kerak',
   'Zombi epidemiyasi: shaharlar vayron bo\'ldi',
@@ -34,11 +34,11 @@ const DISASTERS = [
 
 const ATTRS = [
   { key: 'job', icon: '👷', label: 'Kasb' },
-  { key: 'age', icon: '🎂', label: 'Yosh va jins' },
+  { key: 'age', icon: '🎂', label: 'Yosh' },
+  { key: 'sex', icon: '👫', label: 'Jins' },
   { key: 'health', icon: '❤️', label: 'Sog\'liq' },
   { key: 'trait', icon: '🧠', label: 'Xarakter' },
   { key: 'hobby', icon: '🎯', label: 'Hobbi' },
-  { key: 'item', icon: '🎒', label: 'Buyum' },
   { key: 'baggage', icon: '🧳', label: 'Bagaj' },
   { key: 'secret', icon: '🤫', label: 'Sir' }
 ];
@@ -48,21 +48,17 @@ const makeCode = () => Math.random().toString(36).slice(2, 7).toUpperCase().padE
 const attrOf = (k) => ATTRS.find((a) => a.key === k);
 const attrLine = (card, a) => `${a.icon} ${a.label}: ${card[a.key]}`;
 
-function makeAge() {
-  const n = 18 + Math.floor(Math.random() * 50);
-  const female = Math.random() < 0.5;
-  const sex = female ? (n < 30 ? 'qiz' : 'ayol') : 'erkak';
-  return `${n} yosh, ${sex}`;
-}
-
 function makeCard() {
+  const age = 18 + Math.floor(Math.random() * 50);
+  const female = Math.random() < 0.5;
+  const sex = female ? (age < 30 ? 'Qiz' : 'Ayol') : 'Erkak';
   return {
     job: pick(JOBS),
-    age: makeAge(),
+    age: `${age} yosh`,
+    sex,
     health: pick(HEALTH),
     trait: pick(TRAITS),
     hobby: pick(HOBBIES),
-    item: pick(ITEMS),
     baggage: pick(BAGGAGE),
     secret: pick(SECRETS)
   };
@@ -232,21 +228,16 @@ async function revealAttr(g, userId, key) {
 async function endReveal(g) {
   if (g.finished || g.phase !== 'reveal') return;
   newPhase(g, 'summary');
-  for (const p of alive(g)) {
-    if (!g.roundRevealed.has(p.id)) {
-      const left = ATTRS.filter((a) => !p.revealed.includes(a.key));
-      if (left.length) {
-        const a = pick(left);
-        p.revealed.push(a.key);
-        await say(g.chatId, `⏰ ${p.name} vaqtida tanlamadi, avtomatik ochildi:\n${attrLine(p.card, a)}`);
-      }
-      g.roundRevealed.add(p.id);
-    }
+  // Vaqtida tanlamaganlar uchun karta o'zi ochilmaydi, shunchaki o'tkazib yuboriladi
+  const skipped = alive(g).filter((p) => !g.roundRevealed.has(p.id));
+  skipped.forEach((p) => g.roundRevealed.add(p.id));
+  if (skipped.length) {
+    await say(g.chatId, `⏰ Vaqtida karta ochmadi: ${skipped.map((p) => p.name).join(', ')}. Ular bu bosqichda yangi ma'lumot ochmadi.`);
   }
   const summary = alive(g)
     .map((p) => {
       const open = ATTRS.filter((a) => p.revealed.includes(a.key)).map((a) => `   ${attrLine(p.card, a)}`).join('\n');
-      return `👤 ${p.name}\n${open}`;
+      return `👤 ${p.name}\n${open || '   (hali hech narsa ochmagan)'}`;
     })
     .join('\n\n');
   await say(g.chatId, `📋 RAUND ${g.round} (${g.step}-karta) HOLATI\n\n${summary}\n\n🚪 Bunkerda joy: ${g.capacity} | 👥 Tirik: ${alive(g).length}`);
@@ -363,7 +354,7 @@ async function finishGame(g) {
 }
 
 // ---------- BUYRUQLAR ----------
-const RULES = `🛡 BUNKER QOIDALARI\n\n1. Dunyo falokatga uchradi. Bunkerda joy cheklangan.\n2. Har o'yinchiga tasodifiy karta beriladi (kasb, yosh, sog'liq, xarakter, hobbi, buyum, bagaj, sir). Karta faqat botning shaxsiy chatida ko'rinadi.\n3. Har raundda hamma ikki marta xususiyat ochadi: 1-karta → muhokama (90 s) → 2-karta → muhokama (80 s) → ovoz berish.\n4. Muhokamada (ovozli chatda) o'zingizni ma'qul ko'rsating, boshqalarni gumon ostiga oling.\n5. Ovoz berish bilan bir o'yinchi haydaladi. Haydalganning kartasi to'liq ochiladi.\n6. Bunker sig'imicha odam qolguncha davom etadi. Qolganlar g'olib!\n\nBuyruqlar: /bunker - yangi xona, /stop - o'yinni to'xtatish, /qoidalar - qoidalar.`;
+const RULES = `🛡 BUNKER QOIDALARI\n\n1. Dunyo falokatga uchradi. Bunkerda joy cheklangan.\n2. Har o'yinchiga tasodifiy karta beriladi (kasb, yosh, jins, sog'liq, xarakter, hobbi, bagaj, sir). Karta faqat botning shaxsiy chatida ko'rinadi.\n3. Har raundda hamma ikki marta xususiyat ochadi: 1-karta → muhokama (90 s) → 2-karta → muhokama (80 s) → ovoz berish.\n4. Muhokamada (ovozli chatda) o'zingizni ma'qul ko'rsating, boshqalarni gumon ostiga oling.\n5. Ovoz berish bilan bir o'yinchi haydaladi. Haydalganning kartasi to'liq ochiladi.\n6. Bunker sig'imicha odam qolguncha davom etadi. Qolganlar g'olib!\n\nBuyruqlar: /bunker - yangi xona, /stop - o'yinni to'xtatish, /qoidalar - qoidalar.`;
 
 bot.command('qoidalar', (ctx) => ctx.reply(RULES));
 
