@@ -68,10 +68,10 @@ bot.command('bunker', async (ctx) => {
   if (ctx.chat.type === 'private') {
     return ctx.reply('Bu buyruq guruhda ishlaydi. Meni guruhga qo\'shing va /bunker yozing.');
   }
+  // Eski xona bo'lsa, uni yopib, yangisini ochamiz
   const old = games[chatGame[ctx.chat.id]];
-  if (old && !old.finished) {
-    return ctx.reply('Bu guruhda o\'yin allaqachon ochilgan (xona ' + old.code + ').');
-  }
+  if (old) old.finished = true;
+
   const g = {
     code: makeCode(),
     chatId: ctx.chat.id,
@@ -85,6 +85,13 @@ bot.command('bunker', async (ctx) => {
   g.msgId = msg.message_id;
   games[g.code] = g;
   chatGame[ctx.chat.id] = g.code;
+});
+
+bot.command('stop', async (ctx) => {
+  const g = games[chatGame[ctx.chat.id]];
+  if (!g || g.finished) return ctx.reply('Ochiq o\'yin yo\'q.');
+  g.finished = true;
+  ctx.reply('🛑 O\'yin to\'xtatildi. Yangi o\'yin uchun /bunker yozing.');
 });
 
 bot.start(async (ctx) => {
@@ -107,7 +114,7 @@ bot.start(async (ctx) => {
 
 bot.action(/^start_(.+)$/, async (ctx) => {
   const g = games[ctx.match[1]];
-  if (!g || g.started) return ctx.answerCbQuery('O\'yin boshlangan yoki yopilgan.');
+  if (!g || g.started || g.finished) return ctx.answerCbQuery('O\'yin boshlangan yoki yopilgan.');
   if (ctx.from.id !== g.hostId) {
     return ctx.answerCbQuery('Faqat xona egasi boshlaydi.', { show_alert: true });
   }
