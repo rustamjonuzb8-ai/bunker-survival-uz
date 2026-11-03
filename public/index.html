@@ -168,6 +168,7 @@ input:disabled{opacity:.5}
   </div>
   <button class="btn" id="startBtn">▶️ O'yinni boshlash</button>
   <div class="hint" id="lobbyHint"></div>
+  <button class="btn dark" id="voiceLobby">🎧 Ovozli chatni yoqish</button>
   <div class="row">
     <button class="btn dark" id="rulesLobby">📖 Qoidalar</button>
     <button class="btn dark" id="leaveLobby">🚪 Chiqish</button>
@@ -179,6 +180,7 @@ input:disabled{opacity:.5}
   <div class="ghead">
     <div class="gtitle" id="gTitle"></div>
     <div class="gtimer" id="gTimer"></div>
+    <button class="menubtn" id="voiceBtn">🔇</button>
     <button class="menubtn" id="menuBtn">☰</button>
   </div>
   <div class="gstrip" id="gStrip"></div>
@@ -201,6 +203,7 @@ input:disabled{opacity:.5}
     <h3>Menyu</h3>
     <button class="btn dark" id="menuRules">📖 Qoidalar</button>
     <button class="btn dark" id="menuResult">📊 Rolim va natija</button>
+    <button class="btn dark" id="menuVoiceOff">🔇 Ovozli chatni o'chirish</button>
     <button class="btn red" id="menuLeave">🚪 O'yindan chiqish</button>
     <button class="btn dark" id="menuClose">Yopish</button>
   </div>
@@ -284,6 +287,7 @@ function connect(){
     $("conn").classList.add("hidden");
     var code = lsGet("sz_code");
     if (code) send({ type: "join", id: myId, name: lsGet("sz_name"), code: code });
+    if (code && voice.on) send({ type: "voice", on: true });
   };
   ws.onmessage = function(ev){
     var m;
@@ -316,15 +320,19 @@ function onMsg(m){
   } else if (m.type === "game") {
     lsSet("sz_code", m.code);
     renderGame(m);
+  } else if (m.type === "rtc") {
+    onRtc(m);
   } else if (m.type === "left") {
     lsSet("sz_code", "");
     S = null; dismissed = {}; chatSig = "";
+    if (voice.on) voiceStop();
     showScreen("home");
   } else if (m.type === "error") {
     toast(m.text);
     if (m.fatal) {
       lsSet("sz_code", "");
       S = null;
+      if (voice.on) voiceStop();
       showScreen("home");
     }
   }
@@ -387,7 +395,7 @@ function renderLobby(m){
   list.replaceChildren();
   m.players.forEach(function(p){
     var r = el("div", "pl");
-    r.appendChild(el("span", "", (p.id === m.hostId ? "👑 " : "👤 ") + p.name + (p.id === m.you ? " (siz)" : "")));
+    r.appendChild(el("span", "", (p.id === m.hostId ? "👑 " : "👤 ") + p.name + (p.id === m.you ? " (siz)" : "") + (p.voice ? " 🎧" : "")));
     if (!p.online) r.appendChild(el("span", "off", "oflayn"));
     list.appendChild(r);
   });
@@ -397,6 +405,7 @@ function renderLobby(m){
   $("lobbyHint").textContent = m.isHost
     ? "Kamida " + m.min + " ta o'yinchi kerak."
     : "Xona egasi o'yinni boshlashini kuting...";
+  voiceSync(m.players);
 }
 
 // ---------- O'yin ----------
@@ -470,6 +479,7 @@ function renderGame(s){
   renderChat(s);
   renderBar(s);
   renderOverlay(s, prevPhase);
+  voiceSync(s.players);
 }
 
 function roleCard(s){
@@ -545,7 +555,7 @@ function playerCard(s, p){
   var me = s.me;
   var c = el("div", "pcard" + (p.alive ? "" : " dead") + (p.id === me.id ? " me" : ""));
   var top = el("div");
-  top.appendChild(el("div", "pn", (p.id === s.hostId ? "👑 " : "") + p.name + (p.id === me.id ? " (siz)" : "") + (p.online ? "" : " 📴")));
+  top.appendChild(el("div", "pn", (p.id === s.hostId ? "👑 " : "") + p.name + (p.id === me.id ? " (siz)" : "") + (p.online ? "" : " 📴") + (p.voice ? " 🎧" : "")));
   var cls = "ps";
   var txt;
   if (s.phase === "end") {
@@ -712,6 +722,178 @@ function renderOverlay(s, prev){
   }
   ov.classList.add("show");
 }
+
+// ---------- Ovozli chat (WebRTC) ----------
+var voice = { on: false, mute: false, stream: null, pcs: {}, audios: {}, pend: {} };
+var ICE = { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"],
+    username: "openrelayproject", credential: "openrelayproject" }
+] };
+
+function voiceStart(){
+  if (voice.on) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.RTCPeerConnection) {
+    toast("Bu qurilmada ovozli chat ishlamaydi");
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    .then(function(st){
+      voice.stream = st;
+      voice.on = true;
+      voice.mute = false;
+      send({ type: "voice", on: true });
+      applyVoice();
+      toast("🎧 Ovozli chat yoqildi");
+    })
+    .catch(function(){
+      toast("Mikrofonga ruxsat berilmadi yoki mikrofon topilmadi");
+    });
+}
+function voiceStop(){
+  voice.on = false;
+  Object.keys(voice.pcs).forEach(closePeer);
+  if (voice.stream) {
+    voice.stream.getTracks().forEach(function(t){ t.stop(); });
+    voice.stream = null;
+  }
+  send({ type: "voice", on: false });
+  voiceUI(true);
+}
+function closePeer(id){
+  var pc = voice.pcs[id];
+  if (pc) { try { pc.close(); } catch (e) {} delete voice.pcs[id]; }
+  var a = voice.audios[id];
+  if (a) { a.srcObject = null; if (a.parentNode) a.parentNode.removeChild(a); delete voice.audios[id]; }
+  delete voice.pend[id];
+}
+function makePeer(id, initiator){
+  var pc = new RTCPeerConnection(ICE);
+  voice.pcs[id] = pc;
+  voice.stream.getTracks().forEach(function(t){ pc.addTrack(t, voice.stream); });
+  pc.onicecandidate = function(e){
+    if (e.candidate) send({ type: "rtc", to: id, data: { c: e.candidate } });
+  };
+  pc.ontrack = function(e){
+    var a = voice.audios[id];
+    if (!a) {
+      a = document.createElement("audio");
+      a.autoplay = true;
+      a.setAttribute("playsinline", "");
+      document.body.appendChild(a);
+      voice.audios[id] = a;
+    }
+    a.srcObject = e.streams[0];
+    var pr = a.play();
+    if (pr && pr.catch) pr.catch(function(){});
+    applyVoice();
+  };
+  pc.onconnectionstatechange = function(){
+    if ((pc.connectionState === "failed" || pc.connectionState === "closed") && voice.pcs[id] === pc) closePeer(id);
+  };
+  if (initiator) {
+    pc.createOffer()
+      .then(function(o){ return pc.setLocalDescription(o); })
+      .then(function(){ send({ type: "rtc", to: id, data: { d: pc.localDescription } }); })
+      .catch(function(){});
+  }
+  return pc;
+}
+function flushCand(id){
+  var pc = voice.pcs[id];
+  var list = voice.pend[id] || [];
+  voice.pend[id] = [];
+  if (!pc) return;
+  list.forEach(function(c){ pc.addIceCandidate(c).catch(function(){}); });
+}
+function onRtc(m){
+  if (!voice.on || !voice.stream) return;
+  var id = m.from, d = m.data || {};
+  var pc = voice.pcs[id];
+  if (d.d) {
+    if (d.d.type === "offer") {
+      if (pc) closePeer(id);
+      pc = makePeer(id, false);
+      pc.setRemoteDescription(d.d)
+        .then(function(){ return pc.createAnswer(); })
+        .then(function(a){ return pc.setLocalDescription(a); })
+        .then(function(){ send({ type: "rtc", to: id, data: { d: pc.localDescription } }); flushCand(id); })
+        .catch(function(){});
+    } else if (pc) {
+      pc.setRemoteDescription(d.d).then(function(){ flushCand(id); }).catch(function(){});
+    }
+  } else if (d.c) {
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) pc.addIceCandidate(d.c).catch(function(){});
+    else { (voice.pend[id] = voice.pend[id] || []).push(d.c); }
+  }
+}
+function voiceSync(players){
+  if (!voice.on || !voice.stream) { voiceUI(true); return; }
+  var want = {};
+  players.forEach(function(p){
+    if (p.id !== myId && p.voice && p.online) {
+      want[p.id] = 1;
+      if (!voice.pcs[p.id] && myId < p.id) makePeer(p.id, true);
+    }
+  });
+  Object.keys(voice.pcs).forEach(function(id){ if (!want[id]) closePeer(id); });
+  applyVoice();
+}
+function canSpeak(){
+  var s = S;
+  if (!s) return true;
+  if (s.phase === "night") return s.me.alive && s.me.team === "red";
+  if (s.phase === "discuss" || s.phase === "vote" || s.phase === "result") return s.me.alive;
+  if (s.phase === "roles") return false;
+  return true;
+}
+function canHear(id){
+  var s = S;
+  if (!s) return true;
+  var p = s.players.filter(function(x){ return x.id === id; })[0];
+  if (!p) return false;
+  if (s.phase === "night") return s.me.alive && s.me.team === "red" && p.alive && s.me.mates.some(function(m){ return m.id === id; });
+  if (s.phase === "discuss" || s.phase === "vote" || s.phase === "result") return p.alive;
+  if (s.phase === "roles") return false;
+  return true;
+}
+function applyVoice(){
+  if (!voice.on) { voiceUI(true); return; }
+  var sp = canSpeak();
+  if (voice.stream) voice.stream.getAudioTracks().forEach(function(t){ t.enabled = sp && !voice.mute; });
+  Object.keys(voice.audios).forEach(function(id){ voice.audios[id].muted = !canHear(id); });
+  voiceUI(sp);
+}
+function voiceUI(sp){
+  var b = $("voiceBtn");
+  var lb = $("voiceLobby");
+  if (!voice.on) {
+    b.textContent = "🔇";
+    lb.textContent = "🎧 Ovozli chatni yoqish";
+  } else if (!sp) {
+    b.textContent = "🤐";
+    lb.textContent = "🎧 Ovoz yoqilgan (o'chirish)";
+  } else {
+    b.textContent = voice.mute ? "🔕" : "🎙";
+    lb.textContent = "🎧 Ovoz yoqilgan (o'chirish)";
+  }
+}
+$("voiceBtn").onclick = function(){
+  if (!voice.on) { voiceStart(); return; }
+  if (!canSpeak()) { toast(S && S.phase === "night" ? "Tunda faqat isyonchilar gaplasha oladi" : "Hozir gapirib bo'lmaydi"); return; }
+  voice.mute = !voice.mute;
+  toast(voice.mute ? "🔕 Mikrofon o'chirildi (siz eshitasiz)" : "🎙 Mikrofon yoqildi");
+  applyVoice();
+};
+$("voiceLobby").onclick = function(){ if (voice.on) voiceStop(); else voiceStart(); };
+$("menuVoiceOff").onclick = function(){
+  $("menuSheet").classList.remove("show");
+  if (voice.on) { voiceStop(); toast("🔇 Ovozli chat o'chirildi"); }
+};
+document.addEventListener("click", function(){
+  Object.keys(voice.audios).forEach(function(id){ var pr = voice.audios[id].play(); if (pr && pr.catch) pr.catch(function(){}); });
+});
 
 // ---------- Menyu ----------
 $("menuBtn").onclick = function(){ $("menuSheet").classList.add("show"); };
