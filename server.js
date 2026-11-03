@@ -6,7 +6,8 @@ const BOT_USERNAME = process.env.BOT_USERNAME || 'Bunkeruz1_bot';
 const MIN_PLAYERS = Number(process.env.MIN_PLAYERS || 2);
 const MAX_PLAYERS = 12;
 const REVEAL_SEC = Number(process.env.REVEAL_SEC || 60);
-const DISCUSS_SEC = Number(process.env.DISCUSS_SEC || 90);
+const DISCUSS1_SEC = Number(process.env.DISCUSS1_SEC || 90); // 1-kartadan keyin
+const DISCUSS2_SEC = Number(process.env.DISCUSS2_SEC || 80); // 2-kartadan keyin
 const VOTE_SEC = Number(process.env.VOTE_SEC || 45);
 const BETWEEN_SEC = Number(process.env.BETWEEN_SEC || 4);
 
@@ -148,7 +149,7 @@ function cardText(g, p, prompt) {
     return `${open ? '✅' : '▫️'} ${attrLine(p.card, a)}`;
   }).join('\n');
   let t = `🪪 SIZNING KARTANGIZ (raund ${g.round})\n\n${lines}\n\n✅ - boshqalarga ochilgan xususiyat`;
-  if (prompt) t += `\n\nBu raundda BITTA xususiyatni tanlab oching (${REVEAL_SEC} soniya):`;
+  if (prompt) t += `\n\nRaund ${g.round}, ${g.step}-karta: BITTA xususiyatni tanlab oching (${REVEAL_SEC} soniya):`;
   return t;
 }
 function revealKeyboard(g, p) {
@@ -181,11 +182,17 @@ async function startRound(g) {
   if (g.finished) return;
   if (alive(g).length <= g.capacity) return finishGame(g);
   g.round++;
+  g.step = 1;
+  await startReveal(g);
+}
+
+async function startReveal(g) {
+  if (g.finished) return;
   g.roundRevealed = new Set();
   newPhase(g, 'reveal');
   await say(
     g.chatId,
-    `🔔 RAUND ${g.round}\n\n📂 Xususiyat ochish: har bir tirik o'yinchi botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi (${REVEAL_SEC} soniya).\n👥 Tirik: ${alive(g).length} | 🚪 Joy: ${g.capacity}`
+    `🔔 RAUND ${g.round} - ${g.step}-karta ochiladi\n\n📂 Har bir tirik o'yinchi botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi (${REVEAL_SEC} soniya).\n👥 Tirik: ${alive(g).length} | 🚪 Joy: ${g.capacity}`
   );
   for (const p of alive(g)) {
     if (p.revealed.length >= ATTRS.length) {
@@ -203,7 +210,7 @@ async function revealAttr(g, userId, key) {
   if (!g || g.finished || g.phase !== 'reveal') return { ok: false, text: 'Bu raundda ochish vaqti tugagan.' };
   const p = findPlayer(g, userId);
   if (!p || !p.alive) return { ok: false, text: 'Siz o\'yinda emassiz.' };
-  if (g.roundRevealed.has(p.id)) return { ok: false, text: 'Bu raundda allaqachon ochgansiz.' };
+  if (g.roundRevealed.has(p.id)) return { ok: false, text: 'Bu bosqichda allaqachon ochgansiz.' };
   const a = attrOf(key);
   if (!a || p.revealed.includes(key)) return { ok: false, text: 'Bu xususiyat allaqachon ochilgan.' };
   p.revealed.push(key);
@@ -235,19 +242,31 @@ async function endReveal(g) {
       return `👤 ${p.name}\n${open}`;
     })
     .join('\n\n');
-  await say(g.chatId, `📋 RAUND ${g.round} HOLATI\n\n${summary}\n\n🚪 Bunkerda joy: ${g.capacity} | 👥 Tirik: ${alive(g).length}`);
+  await say(g.chatId, `📋 RAUND ${g.round} (${g.step}-karta) HOLATI\n\n${summary}\n\n🚪 Bunkerda joy: ${g.capacity} | 👥 Tirik: ${alive(g).length}`);
   await startDiscuss(g);
 }
 
 async function startDiscuss(g) {
   if (g.finished) return;
   newPhase(g, 'discuss');
+  const first = g.step === 1;
+  const sec = first ? DISCUSS1_SEC : DISCUSS2_SEC;
   await say(
     g.chatId,
-    `💬 MUHOKAMA (${DISCUSS_SEC} soniya)\n\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\nXona egasi muhokamani tezroq tugatishi mumkin.`,
-    Markup.inlineKeyboard([[Markup.button.callback('⏭ Ovoz berishga o\'tish', `skip_${g.code}`)]])
+    `💬 MUHOKAMA - ${g.step}-kartadan keyin (${sec} soniya)\n\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\n${first ? 'Keyin 2-karta ochiladi.' : 'Keyin ovoz berish boshlanadi.'} Xona egasi muhokamani tezroq tugatishi mumkin.`,
+    Markup.inlineKeyboard([[Markup.button.callback(first ? '⏭ 2-kartaga o\'tish' : '⏭ Ovoz berishga o\'tish', `skip_${g.code}`)]])
   );
-  setTimer(g, DISCUSS_SEC, startVote);
+  setTimer(g, sec, afterDiscuss);
+}
+
+// Muhokamadan keyin: 1-karta bo'lsa 2-kartaga, 2-karta bo'lsa ovoz berishga
+async function afterDiscuss(g) {
+  if (g.finished || g.phase !== 'discuss') return;
+  if (g.step === 1) {
+    g.step = 2;
+    return startReveal(g);
+  }
+  return startVote(g);
 }
 
 async function startVote(g) {
@@ -337,7 +356,7 @@ async function finishGame(g) {
 }
 
 // ---------- BUYRUQLAR ----------
-const RULES = `🛡 BUNKER QOIDALARI\n\n1. Dunyo falokatga uchradi. Bunkerda joy cheklangan.\n2. Har o'yinchiga tasodifiy karta beriladi (kasb, yosh, sog'liq, xarakter, hobbi, buyum, bagaj, sir). Karta faqat botning shaxsiy chatida ko'rinadi.\n3. Har raundda hamma bitta xususiyatini ochadi.\n4. Muhokamada (ovozli chatda) o'zingizni ma'qul ko'rsating, boshqalarni gumon ostiga oling.\n5. Ovoz berish bilan bir o'yinchi haydaladi. Haydalganning kartasi to'liq ochiladi.\n6. Bunker sig'imicha odam qolguncha davom etadi. Qolganlar g'olib!\n\nBuyruqlar: /bunker - yangi xona, /stop - o'yinni to'xtatish, /qoidalar - qoidalar.`;
+const RULES = `🛡 BUNKER QOIDALARI\n\n1. Dunyo falokatga uchradi. Bunkerda joy cheklangan.\n2. Har o'yinchiga tasodifiy karta beriladi (kasb, yosh, sog'liq, xarakter, hobbi, buyum, bagaj, sir). Karta faqat botning shaxsiy chatida ko'rinadi.\n3. Har raundda hamma ikki marta xususiyat ochadi: 1-karta → muhokama (90 s) → 2-karta → muhokama (80 s) → ovoz berish.\n4. Muhokamada (ovozli chatda) o'zingizni ma'qul ko'rsating, boshqalarni gumon ostiga oling.\n5. Ovoz berish bilan bir o'yinchi haydaladi. Haydalganning kartasi to'liq ochiladi.\n6. Bunker sig'imicha odam qolguncha davom etadi. Qolganlar g'olib!\n\nBuyruqlar: /bunker - yangi xona, /stop - o'yinni to'xtatish, /qoidalar - qoidalar.`;
 
 bot.command('qoidalar', (ctx) => ctx.reply(RULES));
 
@@ -409,7 +428,7 @@ bot.action(/^skip_([A-Z0-9]+)$/, async (ctx) => {
     return ctx.answerCbQuery('Faqat xona egasi o\'tkaza oladi.', { show_alert: true });
   }
   await ctx.answerCbQuery();
-  await startVote(g);
+  await afterDiscuss(g);
 });
 
 bot.action(/^vote_([A-Z0-9]+)_(\d+)$/, async (ctx) => {
