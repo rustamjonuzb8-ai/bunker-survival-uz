@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ---------- Sozlamalar ----------
-const MIN_PLAYERS = 2; // haqiqiy o'yin uchun 6 qiling
+const MIN_PLAYERS = 2; // SINOV uchun. Haqiqiy o'yin uchun 6 qiling
 const MAX_PLAYERS = 12;
 const ROLES_SECONDS = 12;
 const NIGHT_SECONDS = 40;
@@ -193,6 +193,7 @@ function viewFor(room, viewer) {
     alive: p.alive,
     team: isEnd || p.revealed ? p.team : null,
     role: isEnd ? p.role : null,
+    voice: !!p.voice,
     voted: room.phase === "vote" ? !!room.votes[p.id] : false
   }));
 
@@ -226,7 +227,12 @@ function viewFor(room, viewer) {
 
 function broadcast(room) {
   if (room.phase === "lobby") {
-    const players = members(room).map((p) => ({ id: p.id, name: p.name, online: p.online }));
+    const players = members(room).map((p) => ({
+      id: p.id,
+      name: p.name,
+      online: p.online,
+      voice: !!p.voice
+    }));
     members(room).forEach((p) => {
       send(p.ws, {
         type: "room",
@@ -588,6 +594,18 @@ function handleMessage(ws, m) {
       startGame(room);
       break;
     }
+    case "voice": {
+      p.voice = !!m.on;
+      broadcast(room);
+      break;
+    }
+    case "rtc": {
+      // Ovozli ulanish uchun xabarlarni boshqa o'yinchiga uzatish
+      const target = getPlayer(room, String(m.to || ""));
+      if (!target || !target.ws || !m.data || typeof m.data !== "object") return;
+      send(target.ws, { type: "rtc", from: p.id, data: m.data });
+      break;
+    }
     case "chat": {
       const text = String(m.text || "").trim().slice(0, 200);
       if (!text) return;
@@ -665,6 +683,7 @@ function onClose(ws) {
   const p = room.players.find((x) => x.id === ws.pid && !x.left);
   if (!p || p.ws !== ws) return;
   p.online = false;
+  p.voice = false;
   p.ws = null;
   if (room.hostId === p.id) pickNewHost(room);
   if (!members(room).some((x) => x.online)) {
