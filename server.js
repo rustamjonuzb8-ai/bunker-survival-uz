@@ -8,6 +8,26 @@ const app = express();
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (req, res) => res.send("ok"));
 
+// Ovozli chat uchun ICE serverlar (TURN maxfiy ma'lumotlari Render'da saqlanadi)
+app.get("/ice", (req, res) => {
+  const servers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" }
+  ];
+  const host = process.env.TURN_HOST;
+  const user = process.env.TURN_USER;
+  const pass = process.env.TURN_PASS;
+  if (host && user && pass) {
+    servers.push({
+      urls: ["turn:" + host + "?transport=udp", "turn:" + host + "?transport=tcp"],
+      username: user,
+      credential: pass
+    });
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ iceServers: servers, turn: !!(host && user && pass) });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
