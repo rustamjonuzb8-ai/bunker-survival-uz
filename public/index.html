@@ -725,12 +725,17 @@ function renderOverlay(s, prev){
 
 // ---------- Ovozli chat (WebRTC) ----------
 var voice = { on: false, mute: false, stream: null, pcs: {}, audios: {}, pend: {} };
-var ICE = { iceServers: [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"],
-    username: "openrelayproject", credential: "openrelayproject" }
-] };
+var ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+var hasTurn = false;
+function loadIce(){
+  return fetch("/ice", { cache: "no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j && j.iceServers) { ICE = { iceServers: j.iceServers }; hasTurn = !!j.turn; }
+    })
+    .catch(function(){});
+}
+loadIce();
 
 function voiceStart(){
   if (voice.on) return;
@@ -738,14 +743,16 @@ function voiceStart(){
     toast("Bu qurilmada ovozli chat ishlamaydi");
     return;
   }
-  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+  loadIce().then(function(){
+    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  })
     .then(function(st){
       voice.stream = st;
       voice.on = true;
       voice.mute = false;
       send({ type: "voice", on: true });
       applyVoice();
-      toast("🎧 Ovozli chat yoqildi");
+      toast(hasTurn ? "🎧 Ovozli chat yoqildi" : "🎧 Ovoz yoqildi (yordamchi server yo'q: uzoqdagilar eshitmasligi mumkin)");
     })
     .catch(function(){
       toast("Mikrofonga ruxsat berilmadi yoki mikrofon topilmadi");
