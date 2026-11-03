@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ---------- Sozlamalar ----------
-const MIN_PLAYERS = 4; // haqiqiy o'yin uchun 6 qiling
+const MIN_PLAYERS = 2; // haqiqiy o'yin uchun 6 qiling
 const MAX_PLAYERS = 12;
 const ROLES_SECONDS = 12;
 const NIGHT_SECONDS = 40;
