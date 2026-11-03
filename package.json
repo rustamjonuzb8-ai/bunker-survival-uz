@@ -1,16 +1,10 @@
 {
   "name": "bunker-survival-uz",
-  "version": "1.0.0",
-  "description": "BUNKER Telegram Multiplayer Survival Game",
+  "version": "2.0.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
+  "scripts": { "start": "node server.js" },
   "dependencies": {
     "express": "^4.19.2",
-    "ws": "^8.18.0"
+    "telegraf": "^4.16.3"
   }
 }
