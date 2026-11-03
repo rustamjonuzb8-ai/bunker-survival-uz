@@ -34,7 +34,7 @@ const DISASTERS = [
 
 const ATTRS = [
   { key: 'job', icon: '👷', label: 'Kasb' },
-  { key: 'age', icon: '🎂', label: 'Yosh' },
+  { key: 'age', icon: '🎂', label: 'Yosh va jins' },
   { key: 'health', icon: '❤️', label: 'Sog\'liq' },
   { key: 'trait', icon: '🧠', label: 'Xarakter' },
   { key: 'hobby', icon: '🎯', label: 'Hobbi' },
@@ -48,10 +48,17 @@ const makeCode = () => Math.random().toString(36).slice(2, 7).toUpperCase().padE
 const attrOf = (k) => ATTRS.find((a) => a.key === k);
 const attrLine = (card, a) => `${a.icon} ${a.label}: ${card[a.key]}`;
 
+function makeAge() {
+  const n = 18 + Math.floor(Math.random() * 50);
+  const female = Math.random() < 0.5;
+  const sex = female ? (n < 30 ? 'qiz' : 'ayol') : 'erkak';
+  return `${n} yosh, ${sex}`;
+}
+
 function makeCard() {
   return {
     job: pick(JOBS),
-    age: 18 + Math.floor(Math.random() * 50),
+    age: makeAge(),
     health: pick(HEALTH),
     trait: pick(TRAITS),
     hobby: pick(HOBBIES),
