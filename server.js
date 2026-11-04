@@ -16,21 +16,138 @@ const games = {};     // kod -> o'yin
 const chatGame = {};  // chatId -> kod
 
 // ---------- MA'LUMOTLAR ----------
-const JOBS = ['Shifokor', 'Muhandis', 'O\'qituvchi', 'Oshpaz', 'Dehqon', 'Politsiyachi', 'Dasturchi', 'Psixolog', 'Quruvchi', 'Haydovchi', 'Blogger', 'Elektrik', 'Veterinar', 'Askar', 'Santexnik', 'Hamshira', 'Fermer', 'Mexanik'];
-const HEALTH = ['Mutlaqo sog\'lom', 'Astma', 'Qand kasalligi', 'Yurak kasalligi', 'Ko\'zi ojiz', 'Allergiya', 'A\'lo jismoniy holat', 'Surunkali charchoq', 'Bir oyog\'i nogiron', 'Tez-tez kasal bo\'ladi'];
-const TRAITS = ['Sabrli', 'Jizzaki', 'Yetakchi', 'Qo\'rqoq', 'Aqlli', 'Yolg\'onchi', 'Mehribon', 'Bag\'ritosh', 'Dovyurak', 'Xudbin'];
-const HOBBIES = ['Baliq ovi', 'Shaxmat', 'Gitara', 'Bog\'dorchilik', 'Kitob o\'qish', 'Sport', 'Rasm chizish', 'Pishirish', 'Sayohat', 'Tikuvchilik'];
-const ITEMS = ['Birinchi yordam qutisi', 'Pichoq', 'Urug\'lar to\'plami', 'Radio', 'Gitara', 'Fonar', 'Kitoblar', 'Ichimlik suvi', 'Asboblar qutisi', 'Gugurt va chaqmoq'];
-const BAGGAGE = ['Konserva zaxirasi (3 oylik)', 'Dori-darmonlar sumkasi', 'Quyosh paneli', 'Kichik generator', 'Suv tozalash filtri', 'Sabzavot urug\'lari qopi', 'Kitoblar qutisi', 'Ko\'rpa-to\'shak va kiyimlar', 'Radiostansiya', 'Ov miltig\'i o\'rniga arbalet', 'Oilaviy rasmlar albomi', 'Bo\'sh chamadon', 'Mototsikl ehtiyot qismlari', 'Qadimiy xarita va kompas'];
-const SECRETS = ['Aslida soxta diplom bilan ishlagan', 'Jinoyat sodir etgan', 'Bepusht', 'Yashirincha kasal', 'Yashirincha boshqalarni kuzatib, sirlarini yig\'ib yurgan', 'Hech kimga aytilmagan qarzi bor', 'Oziq-ovqatni yashirib saqlagan', 'Aslida ismi boshqa'];
-const DISASTERS = [
-  'Yadro urushi: tashqarida radiatsiya, 5 yil yashash kerak',
-  'Zombi epidemiyasi: shaharlar vayron bo\'ldi',
-  'Meteorit zarbasi: quyosh bir necha yil ko\'rinmaydi',
-  'Global suv toshqini: quruqlik deyarli qolmadi',
-  'O\'lik virus: yer yuzi aholisining ko\'pchiligi nobud bo\'ldi',
-  'Super vulqon otilishi: osmonni kul qopladi, muzlik davri boshlandi'
+const JOBS = [
+  "Shifokor (operatsiya qila oladi, kasallarni davolaydi)",
+  "Oshpaz (oz mahsulotdan ham to'yimli ovqat qiladi)",
+  "Dehqon (ekin ekadi, hosil yetishtiradi)",
+  "Elektrchi (chiroq va generatorni ishlatadi)",
+  "Hamshira (yarani bog'laydi, dori beradi)",
+  "Sobiq askar (o'zini himoya qiladi, jasur)",
+  "O'qituvchi (ko'p narsa biladi, bolalarga dars beradi)",
+  "Dasturchi (kompyuterni yaxshi biladi, lekin bunkerda internet yo'q)",
+  "Blogger (obunachisi ko'p, lekin ish qo'lidan kelmaydi)",
+  "Ruhshunos (odamlarni tinchlantiradi, janjalni bosadi)",
+  "Quruvchi (devor va tomni tuzatadi)",
+  "Veterinar (hayvonlarni davolaydi, mol-qo'y boqishni biladi)",
+  "Suv ustasi (quvur va suvni tuzatadi)",
+  "Avtomexanik (har qanday mashinani tuzatadi)",
+  "Aktyor (hammani kuldiradi, lekin amaliy foydasi kam)",
+  "Deputat (gapga usta, ishga usta emas)",
+  "Dorixonachi (dorilarni va ularning zararini biladi)",
+  "Militsioner (tartib saqlaydi, baquvvat)",
+  "Sartarosh (hamma bilan til topishadi, foydasi kam)",
+  "O'simlik bilimdoni (qaysi o'simlik yeyiladi, qaysi biri zaharli ekanini biladi)"
 ];
+const HEALTH = [
+  "Yong'oqdan zaharlanadi (bir dona yong'oq yesa ham og'ir ahvolga tushadi)",
+  "Changdan nafasi qisadi (doim yo'talib, aksirib yuradi)",
+  "Ba'zi dorilar unga to'g'ri kelmaydi (ichsa, tanasi shishib, nafasi qisadi)",
+  "Non yeya olmaydi (non va xamir ovqatdan qattiq kasal bo'ladi)",
+  "Nafas yo'li kasalligi (maxsus nafas dorisi kerak, u 2 oyga yetadi)",
+  "Qand kasalligi (har kuni ukol kerak, zaxirasi 1 oyga yetadi)",
+  "Yuragi zaif (og'ir ish qila olmaydi)",
+  "Ko'zi ko'rmaydi (faqat eshitib va paypaslab yuradi)",
+  "Yaxshi eshitmaydi (xavf haqida ogohlantirishni eshitmay qolishi mumkin)",
+  "Bir oyog'i sun'iy (tez yura olmaydi, lekin ishlay oladi)",
+  "Tutqanoq kasalligi (qattiq qo'rqsa, hushidan ketib yiqiladi)",
+  "Berk joydan qo'rqadi (tor joyda vahimaga tushadi, bunker unga og'ir)",
+  "Beli doim og'riydi (og'ir yuk ko'tara olmaydi)",
+  "Uyqusizlik (uxlamasa jahli chiqib, xato qiladi)",
+  "Qon bosimi baland (har kuni dori ichishi kerak)",
+  "Jigari kasal (oddiy ovqat yeya olmaydi, maxsus ovqat kerak)",
+  "Juda baquvvat va sog'lom",
+  "Temirdek sog'lom (yillar davomida shamollamagan)"
+];
+const TRAITS = [
+  "Sabrli (janjalni bosadi, lekin ishni sekin qiladi)",
+  "Jizzaki (tez achchiqlanadi, janjal chiqaradi)",
+  "Yo'lboshchi (odamlarni boshqaradi, qaror qiladi)",
+  "Qo'rqoq (xavfda vahimaga tushadi)",
+  "Aqlli (qiyin paytda yo'l topadi, lekin o'zini katta oladi)",
+  "Yolg'onchi (ishonarli gapiradi, lekin aldaydi)",
+  "Mehribon (hammaga yordam beradi, o'zini o'ylamaydi)",
+  "Xudbin (faqat o'zini o'ylaydi)",
+  "Jasur (xavfda oldinga chiqadi, ba'zan o'ylamay)",
+  "Ochko'z (ovqatni yashirincha ko'proq yeydi)",
+  "Hazilkash (kayfiyatni ko'taradi, lekin jiddiy paytda ham hazillashadi)",
+  "Tartibli (hamma narsani hisoblaydi, tartibni buzganni yoqtirmaydi)",
+  "Dangasa (ishdan qochadi, lekin gapga chechan)",
+  "Tez ranjiydi (kichik gapdan ham xafa bo'lib, jamoani buzadi)"
+];
+const HOBBIES = [
+  "Baliq ovlash (baliq tutadi, suv topadi)",
+  "Shaxmat (bir necha qadam oldinni o'ylaydi)",
+  "Gitara chalish (ko'ngil ochadi, lekin ovqat bermaydi)",
+  "Bog' qilish (kichik joyda ham ekin ekadi)",
+  "Kitob o'qish (ko'p biladi, lekin amalda kam ishlaydi)",
+  "Og'ir tosh ko'tarish (juda kuchli)",
+  "Rasm chizish (chiroyli, lekin foydasi kam)",
+  "Ovqat pishirish (konservadan ham mazali taom qiladi)",
+  "Ov qilish (hayvon izini biladi, o'rmonda adashmaydi)",
+  "Tikuvchilik (kiyim va ko'rpani tikadi)",
+  "Radio yasash (aloqa uskunasini yig'adi, tashqi dunyo bilan bog'laydi)",
+  "Tog'ga chiqish (chidamli, qiyinchilikka ko'nikkan)",
+  "Kompyuter o'yini (soatlab o'tira oladi, lekin hayotda sust)",
+  "Mashina tuzatish (mayda uskunalarni tuzata oladi)"
+];
+const BAGGAGE = [
+  "Konserva (3 oyga yetadi)",
+  "Dori sumkasi (og'riq dorisi, bint, yod)",
+  "Quyosh batareyasi (oz miqdorda elektr beradi)",
+  "Qo'lda aylantiriladigan generator (chiroq va radio uchun)",
+  "Suv tozalagich (1 yilga yetadi)",
+  "Sabzavot urug'i (ekilsa 4 oyda hosil beradi)",
+  "Kitoblar qutisi (tabobat va dehqonchilik haqida)",
+  "Ko'rpa-to'shak va issiq kiyim (hamma uchun yetadi)",
+  "Aloqa radiosi (boshqa bunkerlar bilan gaplashadi)",
+  "Oilaviy rasmlar albomi (foydasiz, lekin yoqimli)",
+  "Bo'sh chamadon (ichida hech narsa yo'q)",
+  "Asboblar qutisi (bolg'a, arra, mix)",
+  "Gugurt va chaqmoq (olov yoqishga yetadi)",
+  "Eski xarita va kompas (tashqarida yo'l topishga yordam beradi)",
+  "Xo'roz va 3 ta tovuq (tuxum va go'sht beradi)",
+  "Katta chodir (qo'shimcha joy beradi)",
+  "Gitara va nay (ko'ngil ochadi, lekin joy oladi)"
+];
+const SECRETS = [
+  "Diplomi soxta (aslida kasbini yaxshi bilmaydi)",
+  "Oldin o'g'rilik qilib qamalgan",
+  "Farzand ko'rolmaydi (shuning uchun oilasi buzilgan)",
+  "Yashirincha og'ir kasal (bir yilga ham yetmaydi, hech kimga aytmagan)",
+  "Yashirincha boshqalarni kuzatib, sirlarini yig'ib yurgan",
+  "Katta qarzga botgan (qarz egalari uni qidirmoqda)",
+  "Ovqatni yashirincha o'zi uchun yig'ib qo'ygan",
+  "Aslida ismi boshqa (haqiqiy ismini yashirgan)",
+  "Sobiq eri yoki xotini uni qidirmoqda",
+  "Aslida qo'rqoq, lekin hammaga o'zini jasur deydi",
+  "Ishni boshqalarga qildirib, o'zi ishlagan bo'lib ko'rsatgan",
+  "Hayvondan qattiq qo'rqadi (mol-qo'y bilan ishlay olmaydi)",
+  "Yolg'on gapirmasdan turolmaydi",
+  "Yashirin xizmatda ishlagan (ko'p sir biladi, lekin hammaga xavfli)",
+  "Boshqa odamning hujjati bilan yashaydi"
+];
+const DISASTERS = [
+  "Yadro urushi: tashqarida zaharli nur, 5 yil yashash kerak",
+  "Zombi kasalligi: shaharlar vayron bo'ldi",
+  "Osmondan tosh yog'di: quyosh bir necha yil ko'rinmaydi",
+  "Katta toshqin: quruqlik deyarli qolmadi",
+  "O'lat kasalligi: yer yuzi aholisining ko'pchiligi nobud bo'ldi",
+  "Vulqon otildi: osmonni kul qopladi, qattiq sovuq boshlandi"
+];
+
+function drawer(arr) {
+  let pool = [];
+  return () => {
+    if (!pool.length) pool = arr.slice().sort(() => Math.random() - 0.5);
+    return pool.pop();
+  };
+}
+function makeDraws() {
+  return {
+    job: drawer(JOBS), health: drawer(HEALTH), trait: drawer(TRAITS),
+    hobby: drawer(HOBBIES), baggage: drawer(BAGGAGE), secret: drawer(SECRETS)
+  };
+}
 
 const ATTRS = [
   { key: 'job', icon: '👷', label: 'Kasb' },
@@ -48,30 +165,45 @@ const makeCode = () => Math.random().toString(36).slice(2, 7).toUpperCase().padE
 const attrOf = (k) => ATTRS.find((a) => a.key === k);
 const attrLine = (card, a) => `${a.icon} ${a.label}: ${card[a.key]}`;
 
-function makeCard() {
+function makeCard(draws) {
+  const d = draws || makeDraws();
   const age = 18 + Math.floor(Math.random() * 50);
   const female = Math.random() < 0.5;
   const sex = female ? (age < 30 ? 'Qiz' : 'Ayol') : 'Erkak';
   return {
-    job: pick(JOBS),
+    job: d.job(),
     age: `${age} yosh`,
     sex,
-    health: pick(HEALTH),
-    trait: pick(TRAITS),
-    hobby: pick(HOBBIES),
-    baggage: pick(BAGGAGE),
-    secret: pick(SECRETS)
+    health: d.health(),
+    trait: d.trait(),
+    hobby: d.hobby(),
+    baggage: d.baggage(),
+    secret: d.secret()
   };
 }
 
 // ---------- TELEGRAM YORDAMCHILARI ----------
 async function say(chatId, text, extra) {
-  try {
-    return await bot.telegram.sendMessage(chatId, text, extra);
-  } catch (e) {
-    console.log('send xato:', e.message);
-    return null;
+  // Telegram limiti 4096 belgi: uzun xabarni bo'laklarga ajratamiz
+  const parts = [];
+  let rest = String(text);
+  while (rest.length > 3800) {
+    let cut = rest.lastIndexOf('\n\n', 3800);
+    if (cut < 1000) cut = rest.lastIndexOf('\n', 3800);
+    if (cut < 1000) cut = 3800;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n+/, '');
   }
+  parts.push(rest);
+  let last = null;
+  for (let i = 0; i < parts.length; i++) {
+    try {
+      last = await bot.telegram.sendMessage(chatId, parts[i], i === parts.length - 1 ? extra : undefined);
+    } catch (e) {
+      console.log('send xato:', e.message);
+    }
+  }
+  return last;
 }
 async function edit(chatId, msgId, text, extra) {
   try {
@@ -111,7 +243,8 @@ function lobbyText(g) {
 function lobbyKeyboard(g) {
   return Markup.inlineKeyboard([
     [Markup.button.url('➕ Qo\'shilish', `https://t.me/${BOT_USERNAME}?start=join_${g.code}`)],
-    [Markup.button.callback('▶️ Boshlash', `start_${g.code}`)]
+    [Markup.button.callback('▶️ Boshlash', `start_${g.code}`)],
+    [Markup.button.url('📖 O\'yin qoidasi', `https://t.me/${BOT_USERNAME}?start=rules`)]
   ]);
 }
 async function refreshLobby(g) {
@@ -168,8 +301,9 @@ async function beginGame(g) {
   g.started = true;
   g.disaster = pick(DISASTERS);
   g.capacity = Math.max(1, Math.floor(g.players.length / 2));
+  const draws = makeDraws();
   g.players.forEach((p) => {
-    p.card = makeCard();
+    p.card = makeCard(draws);
     p.revealed = [];
     p.alive = true;
   });
@@ -349,14 +483,113 @@ async function finishGame(g) {
     : 'Hech kim';
   await say(
     g.chatId,
-    `🏁 O'YIN TUGADI!\n\n☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`
+    `🏁 O'YIN TUGADI!\n\n☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
+    Markup.inlineKeyboard([[Markup.button.url('➕ Botni boshqa guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)]])
   );
 }
 
 // ---------- BUYRUQLAR ----------
-const RULES = `🛡 BUNKER QOIDALARI\n\n1. Dunyo falokatga uchradi. Bunkerda joy cheklangan.\n2. Har o'yinchiga tasodifiy karta beriladi (kasb, yosh, jins, sog'liq, xarakter, hobbi, bagaj, sir). Karta faqat botning shaxsiy chatida ko'rinadi.\n3. Har raundda hamma ikki marta xususiyat ochadi: 1-karta → muhokama (90 s) → 2-karta → muhokama (80 s) → ovoz berish.\n4. Muhokamada (ovozli chatda) o'zingizni ma'qul ko'rsating, boshqalarni gumon ostiga oling.\n5. Ovoz berish bilan bir o'yinchi haydaladi. Haydalganning kartasi to'liq ochiladi.\n6. Bunker sig'imicha odam qolguncha davom etadi. Qolganlar g'olib!\n\nBuyruqlar: /bunker - yangi xona, /stop - o'yinni to'xtatish, /qoidalar - qoidalar.`;
+const RULES_BTN = "📖 O'yin qoidasi";
 
-bot.command('qoidalar', (ctx) => ctx.reply(RULES));
+function rulePages() {
+  return [
+`📖 QOIDALAR 1/6 - O'YIN G'OYASI
+
+Dunyo falokatga uchradi. Siz va do'stlaringiz omon qolish uchun bunkerga yashirindingiz, lekin joy cheklangan: hammaga yetmaydi.
+
+🎯 Maqsad: oxirigacha bunkerdan haydalmay qolish.
+
+Qanday qilib? O'zingizni foydali ko'rsating, boshqalarning kamchiligini fosh qiling va ovoz berishda o'zingizni himoya qiling.`,
+
+`📖 QOIDALAR 2/6 - BOSHLASH
+
+1️⃣ Botni guruhga qo'shing.
+2️⃣ Guruhda /bunker yozing.
+3️⃣ Hamma "➕ Qo'shilish" tugmasini bosadi, botga Start bosadi va guruhga qaytadi.
+4️⃣ Xona egasi "▶️ Boshlash" tugmasini bosadi.
+
+👥 Kamida ${MIN_PLAYERS}, ko'pi bilan ${MAX_PLAYERS} o'yinchi.
+🔒 Kartangiz faqat botning shaxsiy chatiga keladi, boshqalar ko'rmaydi.
+🎙 Gaplashish uchun guruhning ovozli chatini yoqing.`,
+
+`📖 QOIDALAR 3/6 - KARTANGIZ
+
+Har o'yinchida 8 ta xususiyat bor:
+
+👷 Kasb: bunkerda nima qila olasiz
+🎂 Yosh va 👫 Jins
+❤️ Sog'liq: kasallik yoki zaif joyingiz (sizni zaif qilishi mumkin)
+🧠 Xarakter: boshqalar bilan munosabat
+🎯 Hobbi: qo'shimcha ko'nikma
+🧳 Bagaj: bunkerga olib kirgan narsangiz
+🤫 Sir: eng xavfli xususiyat, ochilsa sizga qarshi ishlatiladi
+
+💡 Boshqalar faqat siz OCHGAN xususiyatlarni ko'radi. Qaysini qachon ochishni o'zingiz hal qilasiz.`,
+
+`📖 QOIDALAR 4/6 - RAUND
+
+Har raund shunday o'tadi:
+
+1️⃣ 1-karta: hamma bitta xususiyatini ochadi (${REVEAL_SEC} soniya)
+2️⃣ Muhokama (${DISCUSS1_SEC} soniya)
+3️⃣ 2-karta: yana bitta xususiyat (${REVEAL_SEC} soniya)
+4️⃣ Muhokama (${DISCUSS2_SEC} soniya)
+5️⃣ Ovoz berish (${VOTE_SEC} soniya), bitta o'yinchi haydaladi
+
+⏰ Vaqtida karta ochmasangiz, o'tkazib yuboriladi va boshqalar sizdan gumon qiladi.`,
+
+`📖 QOIDALAR 5/6 - MUHOKAMA
+
+Bu o'yinning eng qiziq qismi. Ovozli chatda gaplashing:
+
+• O'zingiz nega kerakligingizni tushuntiring: "Men shifokorman, kasallarni davolayman"
+• Boshqalarning kamchiligini aytib, ularni gumon ostiga oling
+• Yolg'on gapirish mumkin! Lekin ochilgan kartangiz bilan qarama-qarshi bo'lmasin
+• Falokatga qarab fikr yuriting: kasallik tarqalsa shifokor kerak, urushda askar
+
+Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. Sen ortiqchasan."`,
+
+`📖 QOIDALAR 6/6 - OVOZ VA G'ALABA
+
+🗳 Ovoz berishda ismlar tugmasi chiqadi. O'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin.
+⚖️ Ovozlar teng bo'lsa, tasodif hal qiladi.
+☠️ Haydalganning kartasi to'liq ochiladi.
+🏁 Bunker sig'imicha odam qolganda o'yin tugaydi, qolganlar G'OLIB.
+
+Misol: 6 o'yinchi, 3 ta joy. Uch raund o'tadi, uch kishi haydaladi, uch kishi bunkerga kiradi.
+
+Buyruqlar: /bunker - yangi xona, /stop - to'xtatish, /qoidalar - qoidalar.`
+  ];
+}
+
+function ruleKeyboard(i) {
+  const last = rulePages().length - 1;
+  const row = [];
+  if (i > 0) row.push(Markup.button.callback('⬅️ Orqaga', `rule_${i - 1}`));
+  if (i < last) row.push(Markup.button.callback('Keyingi ➡️', `rule_${i + 1}`));
+  return Markup.inlineKeyboard([row]);
+}
+
+async function sendRules(ctx) {
+  await ctx.reply(rulePages()[0], ruleKeyboard(0));
+}
+
+bot.command('qoidalar', sendRules);
+bot.hears(RULES_BTN, sendRules);
+bot.action('rules_open', async (ctx) => {
+  await ctx.answerCbQuery();
+  await sendRules(ctx);
+});
+bot.action(/^rule_(\d+)$/, async (ctx) => {
+  const i = Number(ctx.match[1]);
+  const pages = rulePages();
+  if (i < 0 || i >= pages.length) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  try {
+    await ctx.editMessageText(pages[i], ruleKeyboard(i));
+  } catch (e) {}
+});
+
 
 bot.command('bunker', async (ctx) => {
   if (ctx.chat.type === 'private') {
@@ -385,8 +618,15 @@ bot.command('stop', async (ctx) => {
 
 bot.start(async (ctx) => {
   const payload = ctx.startPayload || '';
+  if (payload === 'rules') return sendRules(ctx);
   if (!payload.startsWith('join_')) {
-    return ctx.reply('Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nQoidalar: /qoidalar');
+    return ctx.reply(
+      'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nO\'yin qoidasini o\'rganish uchun pastdagi tugmani bosing 👇',
+      Markup.inlineKeyboard([
+        [Markup.button.url('➕ Guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)],
+        [Markup.button.callback(RULES_BTN, 'rules_open')]
+      ])
+    );
   }
   const g = games[payload.slice(5)];
   const name = ctx.from.first_name || ctx.from.username || 'O\'yinchi';
