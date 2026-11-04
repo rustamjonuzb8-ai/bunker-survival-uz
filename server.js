@@ -3,7 +3,9 @@ const { Telegraf, Markup } = require('telegraf');
 
 const TOKEN = process.env.BOT_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'Bunkeruz1_bot';
-const MIN_PLAYERS = Number(process.env.MIN_PLAYERS || 2);
+const WINNERS = 2; // bunkerda doim 2 ta joy
+const MIN_PLAYERS = Math.max(3, Number(process.env.MIN_PLAYERS || 4));
+const REVOTE_SEC = Number(process.env.REVOTE_SEC || 30);
 const MAX_PLAYERS = 12;
 const REVEAL_SEC = Number(process.env.REVEAL_SEC || 60);
 const DISCUSS1_SEC = Number(process.env.DISCUSS1_SEC || 90); // 1-kartadan keyin
@@ -619,7 +621,7 @@ function joinPlayer(g, id, name) {
   if (g.started) return { ok: false, text: 'O\'yin allaqachon boshlangan.' };
   if (findPlayer(g, id)) return { ok: false, text: 'Siz allaqachon qo\'shilgansiz. Guruhga qayting.' };
   if (g.players.length >= MAX_PLAYERS) return { ok: false, text: 'Xona to\'lgan.' };
-  g.players.push({ id, name, card: null, revealed: [], alive: true });
+  g.players.push({ id, name, card: null, revealed: [], alive: true, votesAgainst: 0 });
   return { ok: true, text: '✅ Siz xonaga qo\'shildingiz. Guruhga qayting, o\'yin boshlanganda karta shu yerga keladi.' };
 }
 
@@ -645,12 +647,13 @@ function revealKeyboard(g, p) {
 async function beginGame(g) {
   g.started = true;
   g.disaster = pick(DISASTERS);
-  g.capacity = Math.max(1, Math.floor(g.players.length / 2));
+  g.capacity = WINNERS;
   const draws = makeDraws();
   g.players.forEach((p) => {
     p.card = makeCard(draws);
     p.revealed = [];
     p.alive = true;
+    p.votesAgainst = 0;
   });
   recordGameStart(g);
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
@@ -747,23 +750,34 @@ async function afterDiscuss(g) {
   return startVote(g);
 }
 
-async function startVote(g) {
-  if (g.finished || g.phase !== 'discuss') return;
+// Ovoz beruvchilar: faqat tirik o'yinchilar
+function voters(g) {
+  return alive(g);
+}
+
+async function startVote(g, tied) {
+  if (g.finished) return;
+  if (!tied && g.phase !== 'discuss') return;
   newPhase(g, 'vote');
   g.votes = new Map();
-  const list = alive(g);
+  g.revote = !!tied;
+  g.voteCandidates = tied || alive(g);
+  const list = g.voteCandidates;
   const rows = [];
   for (let i = 0; i < list.length; i += 2) {
     rows.push(list.slice(i, i + 2).map((p) => Markup.button.callback(`❌ ${p.name}`, `vote_${g.code}_${p.id}`)));
   }
-  const text = voteText(g);
-  const msg = await say(g.chatId, text, Markup.inlineKeyboard(rows));
-  g.voteMsgId = msg ? msg.message_id : null;
   g.voteKeyboard = Markup.inlineKeyboard(rows);
-  setTimer(g, VOTE_SEC, endVote);
+  const msg = await say(g.chatId, voteText(g), g.voteKeyboard);
+  g.voteMsgId = msg ? msg.message_id : null;
+  setTimer(g, tied ? REVOTE_SEC : VOTE_SEC, endVote);
 }
 function voteText(g) {
-  return `🗳 OVOZ BERISH (${VOTE_SEC} soniya)\n\nKimni bunkerdan haydaymiz? Tugmani bosing (o'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin).\n\nOvoz berganlar: ${g.votes.size}/${alive(g).length}`;
+  const sec = g.revote ? REVOTE_SEC : VOTE_SEC;
+  const head = g.revote
+    ? `🔁 QAYTA OVOZ (${sec} soniya)\n\nOvozlar teng bo'ldi. Faqat teng chiqqanlar o'rtasida ovoz beriladi.`
+    : `🗳 OVOZ BERISH (${sec} soniya)`;
+  return `${head}\n\nKimni bunkerdan haydaymiz? Tugmani bosing (o'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin).\n\nOvoz berganlar: ${g.votes.size}/${voters(g).length}`;
 }
 
 // Ovoz berish: natija { ok, text }
@@ -772,37 +786,67 @@ async function castVote(g, voterId, targetId) {
   const voter = findPlayer(g, voterId);
   const target = findPlayer(g, targetId);
   if (!voter || !voter.alive) return { ok: false, text: 'Faqat tirik o\'yinchilar ovoz beradi.' };
-  if (!target || !target.alive) return { ok: false, text: 'Bu o\'yinchi allaqachon haydalgan.' };
+  if (!target || !target.alive || !g.voteCandidates.includes(target)) {
+    return { ok: false, text: 'Bu o\'yinchiga ovoz berib bo\'lmaydi.' };
+  }
   if (voterId === targetId) return { ok: false, text: 'O\'zingizga ovoz bera olmaysiz.' };
   g.votes.set(voterId, targetId);
   if (g.voteMsgId) await edit(g.chatId, g.voteMsgId, voteText(g), g.voteKeyboard);
-  if (g.votes.size >= alive(g).length) setTimeout(() => endVote(g), 500);
+  if (g.votes.size >= voters(g).length) setTimeout(() => endVote(g), 500);
   return { ok: true, text: `Ovoz qabul qilindi: ${target.name}` };
 }
 
 async function endVote(g) {
   if (g.finished || g.phase !== 'vote') return;
-  newPhase(g, 'between');
+  newPhase(g, 'counting');
   const tally = new Map();
   for (const t of g.votes.values()) tally.set(t, (tally.get(t) || 0) + 1);
+  const wasRevote = g.revote;
+  if (!wasRevote) {
+    // butun o'yin davomidagi ovozlar hisobi (tengsizlikni hal qilish uchun)
+    for (const [id, c] of tally) {
+      const p = findPlayer(g, id);
+      if (p) p.votesAgainst = (p.votesAgainst || 0) + c;
+    }
+    g.firstTally = new Map(tally);
+  }
   let candidates;
   let note = '';
   if (tally.size === 0) {
-    candidates = alive(g);
-    note = 'Hech kim ovoz bermadi, tasodif bilan tanlandi.';
+    candidates = g.voteCandidates;
+    note = 'Hech kim ovoz bermadi.';
   } else {
     const max = Math.max(...tally.values());
-    candidates = alive(g).filter((p) => tally.get(p.id) === max);
-    if (candidates.length > 1) note = 'Ovozlar teng bo\'ldi, tasodif bilan tanlandi.';
+    candidates = g.voteCandidates.filter((p) => tally.get(p.id) === max);
   }
-  const out = pick(candidates);
+  // 1) Teng bo'lsa: faqat teng chiqqanlar o'rtasida qayta ovoz
+  if (candidates.length > 1 && !wasRevote && tally.size > 0) {
+    await say(g.chatId, `⚖️ Ovozlar teng bo'ldi: ${candidates.map((p) => p.name).join(', ')}.\nHozir faqat shular o'rtasida qayta ovoz beriladi.`);
+    return startVote(g, candidates);
+  }
+  // 2) Yana teng bo'lsa: o'yin davomida ko'proq ovoz olgan haydaladi, 3) oxirgi chora - tasodif
+  let out;
+  if (candidates.length === 1) {
+    out = candidates[0];
+  } else {
+    const maxAgainst = Math.max(...candidates.map((p) => p.votesAgainst || 0));
+    const worst = candidates.filter((p) => (p.votesAgainst || 0) === maxAgainst);
+    out = pick(worst);
+    note =
+      worst.length === 1
+        ? 'Qayta ovozda ham teng bo\'ldi. O\'yin davomida ko\'proq ovoz olgani haydaldi.'
+        : 'Hamma ko\'rsatkich teng bo\'ldi, tasodif bilan tanlandi.';
+  }
+
+  const base = wasRevote && g.firstTally ? g.firstTally : tally;
+  let results = alive(g).map((p) => `${p.name}: ${base.get(p.id) || 0} ovoz`).join('\n');
+  if (wasRevote) {
+    results += '\n\nQayta ovoz:\n' + g.voteCandidates.map((p) => `${p.name}: ${tally.get(p.id) || 0} ovoz`).join('\n');
+  }
+  newPhase(g, 'between');
   out.alive = false;
   g.eliminated.push(out);
 
-  const results = alive(g)
-    .concat([out])
-    .map((p) => `${p.name}: ${tally.get(p.id) || 0} ovoz`)
-    .join('\n');
   const fullCard = ATTRS.map((a) => attrLine(out.card, a)).join('\n');
   await say(
     g.chatId,
@@ -899,11 +943,11 @@ Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. S
 `📖 QOIDALAR 6/6 - OVOZ VA G'ALABA
 
 🗳 Ovoz berishda ismlar tugmasi chiqadi. O'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin.
-⚖️ Ovozlar teng bo'lsa, tasodif hal qiladi.
+⚖️ Ovozlar teng bo'lsa, faqat teng chiqqanlar o'rtasida qayta ovoz beriladi. Yana teng bo'lsa, o'yin davomida ko'proq ovoz olgan haydaladi.
 ☠️ Haydalganning kartasi to'liq ochiladi.
-🏁 Bunker sig'imicha odam qolganda o'yin tugaydi, qolganlar G'OLIB.
+🏁 Bunkerda HAR DOIM 2 ta joy bor. 2 kishi qolganda o'yin tugaydi va ikkalasi ham G'OLIB.
 
-Misol: 6 o'yinchi, 3 ta joy. Uch raund o'tadi, uch kishi haydaladi, uch kishi bunkerga kiradi.
+Misol: 6 o'yinchi bo'lsa, 4 raund o'tadi, 4 kishi haydaladi, 2 kishi bunkerga kiradi.
 
 Buyruqlar: /bunker - yangi xona, /stop - to'xtatish, /qoidalar - qoidalar.`
   ];
