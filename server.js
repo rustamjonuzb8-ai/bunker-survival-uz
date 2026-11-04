@@ -15,6 +15,351 @@ const bot = new Telegraf(TOKEN || 'no-token');
 const games = {};     // kod -> o'yin
 const chatGame = {};  // chatId -> kod
 
+// ---------- STATISTIKA VA ADMIN PANEL ----------
+const fs = require('fs');
+const ADMIN_ID = Number(process.env.ADMIN_ID || 0);
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_KEY = process.env.SUPABASE_KEY || '';
+const DATA_FILE = process.env.DATA_FILE || './data.json';
+const DAY_MS = 86400000;
+const START_TIME = Date.now();
+let DB = { users: {}, chats: {}, gamesStarted: 0, gamesFinished: 0, gamesLog: [] };
+let saveTimer = null;
+let pendingBroadcast = '';
+let broadcasting = false;
+
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const fmtTime = (ts) => new Date(ts + 5 * 3600000).toISOString().slice(5, 16).replace('T', ' ');
+const userLink = (u) =>
+  `<a href="tg://user?id=${u.id}">${esc(u.name || u.first_name || 'Nomalum')}</a>${u.username ? ' @' + esc(u.username) : ''}`;
+const useSb = () => !!(SB_URL && SB_KEY && typeof fetch === 'function');
+function sbHeaders() {
+  const h = { apikey: SB_KEY };
+  if (SB_KEY.startsWith('eyJ')) h.Authorization = `Bearer ${SB_KEY}`;
+  return h;
+}
+
+// --- saqlash va yuklash ---
+async function loadDB() {
+  if (useSb()) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/store?id=eq.main&select=data`, { headers: sbHeaders() });
+      if (r.ok) {
+        const rows = await r.json();
+        if (rows[0] && rows[0].data) {
+          DB = Object.assign(DB, rows[0].data);
+          console.log('Statistika Supabase\'dan yuklandi');
+          return;
+        }
+      } else {
+        console.log('Supabase o\'qish xatosi:', r.status);
+      }
+    } catch (e) {
+      console.log('Supabase o\'qish xatosi:', e.message);
+    }
+  }
+  try {
+    if (fs.existsSync(DATA_FILE)) DB = Object.assign(DB, JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')));
+  } catch (e) {
+    console.log('Fayl o\'qish xatosi:', e.message);
+  }
+}
+function saveSoon() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(saveNow, 3000);
+  if (saveTimer.unref) saveTimer.unref();
+}
+async function saveNow() {
+  saveTimer = null;
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(DB));
+  } catch (e) {}
+  if (useSb()) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/store?on_conflict=id`, {
+        method: 'POST',
+        headers: Object.assign({}, sbHeaders(), { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }),
+        body: JSON.stringify([{ id: 'main', data: DB }])
+      });
+      if (!r.ok) console.log('Supabase yozish xatosi:', r.status, await r.text());
+    } catch (e) {
+      console.log('Supabase yozish xatosi:', e.message);
+    }
+  }
+}
+
+// --- kuzatish ---
+function trackUser(from, isStart) {
+  if (!from || from.is_bot) return false;
+  const now = Date.now();
+  let u = DB.users[from.id];
+  if (!u) u = DB.users[from.id] = { id: from.id, first: now, games: 0, started: false, blocked: false };
+  u.name = from.first_name || '';
+  u.username = from.username || '';
+  u.last = now;
+  let newStart = false;
+  if (isStart) {
+    if (!u.started) {
+      u.started = true;
+      newStart = true;
+    }
+    u.blocked = false;
+  }
+  saveSoon();
+  return newStart;
+}
+function trackChat(chat) {
+  if (!chat || chat.type === 'private') return false;
+  let isNew = false;
+  let c = DB.chats[chat.id];
+  if (!c) {
+    c = DB.chats[chat.id] = { id: chat.id, first: Date.now(), games: 0, active: true };
+    isNew = true;
+  }
+  c.title = chat.title || '';
+  c.last = Date.now();
+  c.active = true;
+  saveSoon();
+  return isNew;
+}
+async function notifyAdmin(html) {
+  if (!ADMIN_ID) return;
+  try {
+    await bot.telegram.sendMessage(ADMIN_ID, html, { parse_mode: 'HTML', disable_web_page_preview: true });
+  } catch (e) {}
+}
+const startedCount = () => Object.values(DB.users).filter((u) => u.started).length;
+
+async function trackMiddleware(ctx, next) {
+  try {
+    const text = ctx.message && typeof ctx.message.text === 'string' ? ctx.message.text : '';
+    const isPrivate = ctx.chat && ctx.chat.type === 'private';
+    const interactive = !!ctx.callbackQuery || isPrivate || text.startsWith('/');
+    if (interactive) {
+      const isStart = isPrivate && text.startsWith('/start');
+      const newStart = trackUser(ctx.from, isStart);
+      const newChat = trackChat(ctx.chat);
+      if (newStart && ctx.from.id !== ADMIN_ID) {
+        notifyAdmin(`🆕 Yangi foydalanuvchi: ${userLink(ctx.from)}\nJami: <b>${startedCount()}</b>`);
+      }
+      if (newChat) {
+        const total = Object.values(DB.chats).filter((c) => c.active).length;
+        notifyAdmin(`🏘 Bot yangi guruhda ishlatildi: <b>${esc(ctx.chat.title)}</b>\nJami guruh: <b>${total}</b>`);
+      }
+    }
+  } catch (e) {
+    console.log('kuzatish xatosi:', e.message);
+  }
+  return next();
+}
+bot.use(trackMiddleware);
+
+function recordGameStart(g) {
+  g.players.forEach((p) => {
+    const u = DB.users[p.id];
+    if (u) u.games = (u.games || 0) + 1;
+  });
+  const c = DB.chats[g.chatId];
+  if (c) c.games = (c.games || 0) + 1;
+  DB.gamesStarted = (DB.gamesStarted || 0) + 1;
+  saveSoon();
+}
+function recordGameEnd(g) {
+  DB.gamesFinished = (DB.gamesFinished || 0) + 1;
+  DB.gamesLog = (DB.gamesLog || []).concat([{ t: Date.now(), chat: g.chatId, players: g.players.length, rounds: g.round }]).slice(-500);
+  saveSoon();
+}
+
+// --- admin ko'rinishlari ---
+const isAdmin = (ctx) => !!(ADMIN_ID && ctx.from && ctx.from.id === ADMIN_ID);
+const menuKb = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('📊 Statistika', 'adm_stats'), Markup.button.callback('🔥 Faollar', 'adm_active')],
+    [Markup.button.callback('🆕 Yangi odamlar', 'adm_new'), Markup.button.callback('🏘 Guruhlar', 'adm_chats')],
+    [Markup.button.callback('🎮 Hozirgi o\'yinlar', 'adm_live'), Markup.button.callback('📢 Xabar yuborish', 'adm_bc')]
+  ]);
+const backKb = (name) =>
+  Markup.inlineKeyboard([[Markup.button.callback('⬅️ Menyu', 'adm_menu'), Markup.button.callback('🔄 Yangilash', `adm_${name}`)]]);
+const MENU_TEXT = '🛠 BUNKER boshqaruv paneli\n\nKerakli bo\'limni tanlang:';
+
+function viewStats() {
+  const now = Date.now();
+  const users = Object.values(DB.users);
+  const started = users.filter((u) => u.started);
+  const blocked = started.filter((u) => u.blocked).length;
+  const within = (d) => users.filter((u) => now - u.last < d * DAY_MS).length;
+  const newIn = (d) => started.filter((u) => now - u.first < d * DAY_MS).length;
+  const chats = Object.values(DB.chats);
+  const activeChats = chats.filter((c) => c.active).length;
+  const live = Object.values(games).filter((g) => !g.finished).length;
+  const text =
+    `📊 <b>BUNKER statistikasi</b>\n\n` +
+    `👥 Botga start bosganlar: <b>${started.length}</b>\n` +
+    `   🆕 24 soatda: ${newIn(1)} | 7 kunda: ${newIn(7)}\n` +
+    `   🚫 Botni bloklaganlar: ${blocked}\n\n` +
+    `🔥 Faol foydalanuvchilar:\n   24 soat: <b>${within(1)}</b> | 7 kun: <b>${within(7)}</b> | 30 kun: <b>${within(30)}</b>\n\n` +
+    `🏘 Guruhlar: <b>${activeChats}</b> (jami qo'shilgan: ${chats.length})\n\n` +
+    `🎮 O'yinlar: boshlangan <b>${DB.gamesStarted || 0}</b>, tugagan <b>${DB.gamesFinished || 0}</b>\n` +
+    `   Hozir o'ynalayotgan: <b>${live}</b>\n\n` +
+    `🕒 Server ishga tushgan: ${fmtTime(START_TIME)}\n` +
+    `💾 Saqlash: ${useSb() ? 'Supabase (doimiy)' : 'vaqtinchalik fayl (qayta ishga tushsa o\'chishi mumkin)'}`;
+  return { text, kb: backKb('stats') };
+}
+function viewNew() {
+  const list = Object.values(DB.users).filter((u) => u.started).sort((a, b) => b.first - a.first).slice(0, 15);
+  const body = list.length ? list.map((u, i) => `${i + 1}. ${userLink(u)} - ${fmtTime(u.first)}`).join('\n') : 'Hali hech kim yo\'q.';
+  return { text: `🆕 <b>Oxirgi 15 ta yangi foydalanuvchi</b>\n\n${body}`, kb: backKb('new') };
+}
+function viewActive() {
+  const now = Date.now();
+  const list = Object.values(DB.users).filter((u) => now - u.last < 7 * DAY_MS).sort((a, b) => b.last - a.last);
+  const body = list.length
+    ? list.slice(0, 15).map((u, i) => `${i + 1}. ${userLink(u)} - ${fmtTime(u.last)} | o'yin: ${u.games || 0}`).join('\n')
+    : 'Oxirgi 7 kunda faol odam yo\'q.';
+  return { text: `🔥 <b>Faol foydalanuvchilar (7 kun): ${list.length} kishi</b>\nEng so'nggi 15 tasi:\n\n${body}`, kb: backKb('active') };
+}
+function viewChats() {
+  const list = Object.values(DB.chats).filter((c) => c.active).sort((a, b) => b.last - a.last);
+  const body = list.length
+    ? list.slice(0, 15).map((c, i) => `${i + 1}. <b>${esc(c.title || c.id)}</b> - o'yin: ${c.games || 0} | oxirgi: ${fmtTime(c.last)}`).join('\n')
+    : 'Hali hech qaysi guruhda ishlatilmagan.';
+  return { text: `🏘 <b>Guruhlar: ${list.length} ta</b>\n\n${body}`, kb: backKb('chats') };
+}
+function viewLive() {
+  const live = Object.values(games).filter((g) => !g.finished);
+  const PH = { lobby: 'xona ochiq', reveal: 'karta ochish', summary: 'natija', discuss: 'muhokama', vote: 'ovoz berish', between: 'raund oralig\'i' };
+  const body = live.length
+    ? live
+        .map((g) => {
+          const c = DB.chats[g.chatId];
+          return `• <b>${esc(g.code)}</b> | ${esc((c && c.title) || g.chatId)} | ${PH[g.phase] || g.phase} | raund ${g.round} | ${g.players.length} kishi`;
+        })
+        .join('\n')
+    : 'Hozir o\'ynalayotgan o\'yin yo\'q.';
+  const rows = live.slice(0, 8).map((g) => [Markup.button.callback(`🛑 ${g.code} ni to'xtatish`, `adm_stop_${g.code}`)]);
+  rows.push([Markup.button.callback('⬅️ Menyu', 'adm_menu'), Markup.button.callback('🔄 Yangilash', 'adm_live')]);
+  return { text: `🎮 <b>Hozirgi o'yinlar</b>\n\n${body}`, kb: Markup.inlineKeyboard(rows) };
+}
+function viewBroadcast() {
+  const n = Object.values(DB.users).filter((u) => u.started && !u.blocked).length;
+  return {
+    text: `📢 <b>Xabar yuborish</b>\n\nBotga start bosgan <b>${n}</b> kishiga xabar yuboriladi.\n\nBuyruq bilan yozing:\n<code>/xabar Salom! Yangi o'yin qo'shildi 🎉</code>\n\nAvval ko'rib chiqish chiqadi, "Yuborish" tugmasini bosgandan keyingina ketadi.`,
+    kb: backKb('bc')
+  };
+}
+const VIEWS = { stats: viewStats, active: viewActive, new: viewNew, chats: viewChats, live: viewLive, bc: viewBroadcast };
+
+async function showView(ctx, v) {
+  const extra = Object.assign({ parse_mode: 'HTML', disable_web_page_preview: true }, v.kb);
+  try {
+    await ctx.editMessageText(v.text, extra);
+  } catch (e) {}
+}
+
+// --- buyruqlar ---
+bot.command('id', (ctx) => ctx.reply(`Sizning Telegram ID'ingiz: ${ctx.from.id}`));
+
+bot.command('admin', async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
+  if (!ADMIN_ID) {
+    return ctx.reply(
+      `Boshqaruv paneli hali sozlanmagan.\n\nSizning Telegram ID'ingiz: ${ctx.from.id}\n\nRender → Environment → ADMIN_ID nomi bilan shu raqamni qo'shing va saqlang.`
+    );
+  }
+  if (!isAdmin(ctx)) return ctx.reply('Bu buyruq faqat bot egasi uchun.');
+  await ctx.reply(MENU_TEXT, menuKb());
+});
+
+bot.action(/^adm_(stats|active|new|chats|live|bc)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+  await ctx.answerCbQuery();
+  await showView(ctx, VIEWS[ctx.match[1]]());
+});
+bot.action('adm_menu', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+  await ctx.answerCbQuery();
+  try {
+    await ctx.editMessageText(MENU_TEXT, menuKb());
+  } catch (e) {}
+});
+bot.action(/^adm_stop_([A-Z0-9]+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+  const g = games[ctx.match[1]];
+  if (g && !g.finished) {
+    closeGame(g);
+    say(g.chatId, '🛑 O\'yin bot egasi tomonidan to\'xtatildi. Yangi o\'yin uchun /bunker yozing.');
+    await ctx.answerCbQuery('To\'xtatildi');
+  } else {
+    await ctx.answerCbQuery('Bu o\'yin allaqachon tugagan.');
+  }
+  await showView(ctx, viewLive());
+});
+
+bot.command('xabar', async (ctx) => {
+  if (ctx.chat.type !== 'private' || !isAdmin(ctx)) return;
+  const text = ctx.message.text.replace(/^\/xabar(@\w+)?\s*/i, '').trim();
+  if (!text) return ctx.reply('Xabar matnini buyruq bilan birga yozing:\n/xabar Salom! Yangi o\'yin qo\'shildi 🎉');
+  const targets = Object.values(DB.users).filter((u) => u.started && !u.blocked).length;
+  pendingBroadcast = text;
+  await ctx.reply(
+    `📢 Quyidagi xabar ${targets} kishiga yuboriladi:\n\n${text}`,
+    Markup.inlineKeyboard([[Markup.button.callback('✅ Yuborish', 'adm_bc_go'), Markup.button.callback('❌ Bekor qilish', 'adm_bc_cancel')]])
+  );
+});
+bot.action('adm_bc_cancel', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+  pendingBroadcast = '';
+  await ctx.answerCbQuery('Bekor qilindi');
+  try {
+    await ctx.editMessageText('❌ Xabar yuborish bekor qilindi.');
+  } catch (e) {}
+});
+bot.action('adm_bc_go', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+  if (!pendingBroadcast) return ctx.answerCbQuery('Yuboriladigan xabar yo\'q.', { show_alert: true });
+  if (broadcasting) return ctx.answerCbQuery('Yuborish davom etmoqda.', { show_alert: true });
+  await ctx.answerCbQuery('Yuborish boshlandi...');
+  try {
+    await ctx.editMessageText('⏳ Xabar yuborilmoqda...');
+  } catch (e) {}
+  const text = pendingBroadcast;
+  pendingBroadcast = '';
+  broadcasting = true;
+  let ok = 0;
+  let fail = 0;
+  for (const u of Object.values(DB.users)) {
+    if (!u.started || u.blocked) continue;
+    try {
+      await bot.telegram.sendMessage(u.id, text);
+      ok++;
+    } catch (e) {
+      fail++;
+      if (e && e.response && e.response.error_code === 403) u.blocked = true;
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  broadcasting = false;
+  saveSoon();
+  await notifyAdmin(`📢 Xabar yuborildi.\n✅ Yetib bordi: <b>${ok}</b>\n❌ Yetmadi: <b>${fail}</b>`);
+});
+
+// bot guruhdan chiqarilsa yoki foydalanuvchi botni bloklasa
+bot.on('my_chat_member', async (ctx) => {
+  try {
+    const st = ctx.myChatMember.new_chat_member.status;
+    const gone = st === 'kicked' || st === 'left';
+    if (ctx.chat.type === 'private') {
+      const u = DB.users[ctx.from.id];
+      if (u) u.blocked = gone;
+    } else {
+      const c = DB.chats[ctx.chat.id];
+      if (c) c.active = !gone;
+    }
+    saveSoon();
+  } catch (e) {}
+});
+
+
 // ---------- MA'LUMOTLAR ----------
 const JOBS = [
   "Shifokor (operatsiya qila oladi, kasallarni davolaydi)",
@@ -307,6 +652,7 @@ async function beginGame(g) {
     p.revealed = [];
     p.alive = true;
   });
+  recordGameStart(g);
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
   await say(
     g.chatId,
@@ -474,6 +820,7 @@ async function endVote(g) {
 async function finishGame(g) {
   if (g.finished) return;
   closeGame(g);
+  recordGameEnd(g);
   const winners = alive(g);
   const winText = winners
     .map((p) => `👤 ${p.name}\n` + ATTRS.map((a) => `   ${attrLine(p.card, a)}`).join('\n'))
@@ -683,9 +1030,18 @@ if (require.main === module) {
   app.get('/', (req, res) => res.send('BUNKER bot ishlayapti'));
   app.listen(process.env.PORT || 3000);
 
-  bot.launch({ dropPendingUpdates: true });
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  loadDB()
+    .catch((e) => console.log('loadDB xatosi:', e.message))
+    .then(() => bot.launch({ dropPendingUpdates: true }))
+    .catch((e) => console.log('launch xatosi:', e.message));
+  process.once('SIGINT', () => {
+    saveNow();
+    bot.stop('SIGINT');
+  });
+  process.once('SIGTERM', () => {
+    saveNow();
+    bot.stop('SIGTERM');
+  });
 
   // Tugagan eski o'yinlarni tozalash
   setInterval(() => {
@@ -696,4 +1052,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
