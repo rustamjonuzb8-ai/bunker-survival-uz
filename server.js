@@ -679,8 +679,14 @@ async function beginGame(g) {
     p.revealed = [];
     p.alive = true;
     p.votesAgainst = 0;
+    p.bought = takeBought(p); // sotib olingan karta bo'lsa, avtomatik qo'shiladi
   });
   recordGameStart(g);
+  for (const p of g.players) {
+    if (p.bought) {
+      await say(p.id, `⭐ Do'kondan olgan kartangiz qo'shildi: ${attrLine(p.card, attrOf(p.bought.key))}`);
+    }
+  }
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
   await say(
     g.chatId,
@@ -902,7 +908,140 @@ async function finishGame(g) {
     `🏁 O'YIN TUGADI!\n\n☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
     Markup.inlineKeyboard([[Markup.button.url('➕ Botni boshqa guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)]])
   );
+  await rewardTokens(g);
 }
+
+// ---------- TOKEN VA DO'KON ----------
+const CARD_PRICE = Number(process.env.CARD_PRICE || 40);       // 1 ta karta narxi
+const WELCOME_TOKENS = Number(process.env.WELCOME_TOKENS || 60); // birinchi kirganda
+const DAILY_TOKENS = Number(process.env.DAILY_TOKENS || 20);     // kunlik bonus
+const PLAY_TOKENS = Number(process.env.PLAY_TOKENS || 10);       // o'yin oxirigacha o'ynagani uchun
+const WIN_TOKENS = Number(process.env.WIN_TOKENS || 20);         // bunkerga kirgani uchun (qo'shimcha)
+const REWARD_MIN_PLAYERS = 4;                                    // kamida shuncha o'yinchi bo'lsa token beriladi
+const SHOP_KEYS = ['job', 'health', 'trait', 'hobby', 'baggage'];
+const shopPool = (key) => ({ job: JOBS, health: HEALTH, trait: TRAITS, hobby: HOBBIES, baggage: BAGGAGE }[key]);
+const dayKey = () => Math.floor((Date.now() + 5 * 3600000) / DAY_MS);
+
+function wallet(id) {
+  let u = DB.users[id];
+  if (!u) u = DB.users[id] = { id, first: Date.now(), games: 0, started: false, blocked: false };
+  if (u.tokens == null) u.tokens = WELCOME_TOKENS;
+  return u;
+}
+// O'yin boshlanganda: sotib olingan kartani o'yinchiga qo'yadi va bir marta ishlatilgan deb o'chiradi
+function takeBought(p) {
+  const u = DB.users[p.id];
+  if (!u || !u.bought || !attrOf(u.bought.key)) return null;
+  const b = u.bought;
+  p.card[b.key] = b.value;
+  delete u.bought;
+  saveSoon();
+  return b;
+}
+async function rewardTokens(g) {
+  if (g.players.length < REWARD_MIN_PLAYERS) return;
+  const won = new Set(alive(g).map((p) => p.id));
+  for (const p of g.players) {
+    const n = PLAY_TOKENS + (won.has(p.id) ? WIN_TOKENS : 0);
+    const u = wallet(p.id);
+    u.tokens += n;
+    await say(p.id, `🪙 +${n} token (${won.has(p.id) ? "o'yin va bunkerga kirganingiz uchun" : "o'yin uchun"}).\nHisobingiz: ${u.tokens}. Do'kon: /dokon`);
+  }
+  saveSoon();
+}
+
+function shopHome(id) {
+  const u = wallet(id);
+  const bought = u.bought
+    ? `⭐ Navbatdagi karta: <b>${esc(attrOf(u.bought.key).label)}</b> - ${esc(splitHint(u.bought.value).main)}\n<i>Keyingi o'yin boshlanganda o'zi qo'shiladi.</i>`
+    : 'Hali karta tanlamagansiz.';
+  const text =
+    `🛒 <b>DO'KON</b>\n🪙 Hisobingiz: <b>${u.tokens}</b> token\n\n${bought}\n\n` +
+    `Bitta karta: <b>${CARD_PRICE}</b> token. Karta bitta o'yin uchun amal qiladi.\n\n` +
+    `<b>Token qanday topiladi:</b>\n• O'yinni oxirigacha o'ynash: +${PLAY_TOKENS}\n• Bunkerga kirish: +${WIN_TOKENS}\n• Har kuni bonus: +${DAILY_TOKENS}\n\nQaysi bo'limdan olasiz?`;
+  const cats = SHOP_KEYS.map((k) => Markup.button.callback(`${attrOf(k).icon} ${attrOf(k).label}`, `shc_${k}`));
+  const rows = [];
+  for (let i = 0; i < cats.length; i += 2) rows.push(cats.slice(i, i + 2));
+  rows.push([Markup.button.callback(`🎁 Kunlik bonus (+${DAILY_TOKENS})`, 'shbonus')]);
+  return { text, extra: htmlKb(rows) };
+}
+function shopCategory(key) {
+  const a = attrOf(key);
+  const items = shopPool(key);
+  const btns = items.map((v, i) => Markup.button.callback(splitHint(v).main.slice(0, 28), `shi_${key}_${i}`));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([Markup.button.callback('⬅️ Do\'konga qaytish', 'shop_open')]);
+  return { text: `${a.icon} <b>${a.label}</b> - kerakli kartani tanlang (${CARD_PRICE} token):`, extra: htmlKb(rows) };
+}
+function shopItem(id, key, idx) {
+  const a = attrOf(key);
+  const v = (shopPool(key) || [])[idx];
+  if (!a || v == null) return null;
+  const u = wallet(id);
+  const { main, hint } = splitHint(v);
+  let text = `${a.icon} <b>${a.label}:</b> ${esc(main)}` + (hint ? `\n<i>${esc(hint)}</i>` : '') + `\n\nNarxi: <b>${CARD_PRICE}</b> token\nHisobingiz: <b>${u.tokens}</b> token`;
+  if (u.bought) text += `\n\n⚠️ Sizda navbatdagi karta bor (${esc(attrOf(u.bought.key).label)}). U almashtiriladi, ${u.bought.paid || CARD_PRICE} token qaytariladi.`;
+  const rows = [[Markup.button.callback('✅ Sotib olish', `shb_${key}_${idx}`)], [Markup.button.callback('⬅️ Orqaga', `shc_${key}`)]];
+  return { text, extra: htmlKb(rows) };
+}
+// Xabarni yangilaydi (tugmadan kelgan bo'lsa) yoki yangi xabar yuboradi
+async function showView(ctx, view) {
+  if (ctx.callbackQuery) {
+    try {
+      return await ctx.editMessageText(view.text, view.extra);
+    } catch (e) {}
+  }
+  return ctx.reply(view.text, view.extra);
+}
+async function openShop(ctx) {
+  if (ctx.chat && ctx.chat.type !== 'private') {
+    return ctx.reply('Do\'kon shaxsiy chatda ochiladi 👇', Markup.inlineKeyboard([[Markup.button.url('🛒 Do\'konni ochish', `https://t.me/${BOT_USERNAME}?start=shop`)]]));
+  }
+  return showView(ctx, shopHome(ctx.from.id));
+}
+bot.command(['dokon', 'hamyon'], openShop);
+bot.action('shop_open', async (ctx) => {
+  await ctx.answerCbQuery();
+  return showView(ctx, shopHome(ctx.from.id));
+});
+bot.action(/^shc_(\w+)$/, async (ctx) => {
+  if (!SHOP_KEYS.includes(ctx.match[1])) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  return showView(ctx, shopCategory(ctx.match[1]));
+});
+bot.action(/^shi_(\w+)_(\d+)$/, async (ctx) => {
+  const v = SHOP_KEYS.includes(ctx.match[1]) ? shopItem(ctx.from.id, ctx.match[1], Number(ctx.match[2])) : null;
+  if (!v) return ctx.answerCbQuery('Karta topilmadi.', { show_alert: true });
+  await ctx.answerCbQuery();
+  return showView(ctx, v);
+});
+bot.action(/^shb_(\w+)_(\d+)$/, async (ctx) => {
+  const key = ctx.match[1];
+  const item = SHOP_KEYS.includes(key) ? (shopPool(key) || [])[Number(ctx.match[2])] : null;
+  if (item == null) return ctx.answerCbQuery('Karta topilmadi.', { show_alert: true });
+  const u = wallet(ctx.from.id);
+  const refund = u.bought ? u.bought.paid || CARD_PRICE : 0;
+  if (u.tokens + refund < CARD_PRICE) {
+    return ctx.answerCbQuery(`Token yetarli emas. Kerak: ${CARD_PRICE}, sizda: ${u.tokens}.`, { show_alert: true });
+  }
+  u.tokens += refund - CARD_PRICE;
+  u.bought = { key, value: item, paid: CARD_PRICE };
+  saveSoon();
+  await ctx.answerCbQuery('✅ Sotib olindi! Keyingi o\'yinda o\'zi qo\'shiladi.', { show_alert: true });
+  return showView(ctx, shopHome(ctx.from.id));
+});
+bot.action('shbonus', async (ctx) => {
+  const u = wallet(ctx.from.id);
+  if (u.lastBonus === dayKey()) {
+    return ctx.answerCbQuery('Bugungi bonus olingan. Ertaga qaytib keling!', { show_alert: true });
+  }
+  u.lastBonus = dayKey();
+  u.tokens += DAILY_TOKENS;
+  saveSoon();
+  await ctx.answerCbQuery(`🎁 +${DAILY_TOKENS} token!`);
+  return showView(ctx, shopHome(ctx.from.id));
+});
 
 // ---------- BUYRUQLAR ----------
 const RULES_BTN = "📖 O'yin qoidasi";
@@ -1036,11 +1175,13 @@ bot.command('stop', async (ctx) => {
 bot.start(async (ctx) => {
   const payload = ctx.startPayload || '';
   if (payload === 'rules') return sendRules(ctx);
+  if (payload === 'shop') return openShop(ctx);
   if (!payload.startsWith('join_')) {
     return ctx.reply(
-      'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nO\'yin qoidasini o\'rganish uchun pastdagi tugmani bosing 👇',
+      'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\n🛒 Do\'konda token evaziga kerakli kartani oldindan sotib olsangiz, o\'yin boshlanganda o\'zi qo\'shiladi.',
       Markup.inlineKeyboard([
         [Markup.button.url('➕ Guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)],
+        [Markup.button.callback('🛒 Do\'kon (token)', 'shop_open')],
         [Markup.button.callback(RULES_BTN, 'rules_open')]
       ])
     );
