@@ -626,14 +626,38 @@ function joinPlayer(g, id, name) {
 }
 
 // ---------- O'YIN OQIMI ----------
+// "Avtomexanik (har qanday mashinani tuzatadi)" -> asosiy qism va izoh
+function splitHint(v) {
+  const m = String(v).match(/^(.*?)\s*\((.*)\)\s*$/);
+  return m ? { main: m[1], hint: m[2] } : { main: String(v), hint: '' };
+}
+// Karta matni (HTML): qalin sarlavha, izoh alohida qatorda kursivda
 function cardText(g, p, prompt) {
   const lines = ATTRS.map((a) => {
     const open = p.revealed.includes(a.key);
-    return `${open ? '✅' : '▫️'} ${attrLine(p.card, a)}`;
+    const { main, hint } = splitHint(p.card[a.key]);
+    return `${open ? '👁' : '🔒'} <b>${a.label}:</b> ${esc(main)}` + (hint ? `\n      <i>${esc(hint)}</i>` : '');
   }).join('\n');
-  let t = `🪪 SIZNING KARTANGIZ (raund ${g.round})\n\n${lines}\n\n✅ - boshqalarga ochilgan xususiyat`;
-  if (prompt) t += `\n\nRaund ${g.round}, ${g.step}-karta: BITTA xususiyatni tanlab oching (${REVEAL_SEC} soniya):`;
+  let t = `🪪 <b>SIZNING KARTANGIZ</b> · raund ${g.round}\n━━━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━━━\n🔒 faqat siz ko'rasiz   👁 hammaga ochiq`;
+  if (prompt) t += `\n\n👉 <b>${g.step}-karta:</b> bitta xususiyatni tanlab oching (${REVEAL_SEC} soniya)`;
   return t;
+}
+
+// Guruhga qaytish havolasi: ochiq guruh (username) yoki yopiq superguruh (t.me/c/...)
+function groupLink(g) {
+  if (g.chatUsername) return `https://t.me/${g.chatUsername}`;
+  const id = String(g.chatId);
+  if (id.startsWith('-100')) return `https://t.me/c/${id.slice(4)}`;
+  return null;
+}
+function backRow(g) {
+  const link = g && groupLink(g);
+  return link ? [Markup.button.url('⬅️ Guruhga qaytish', link)] : null;
+}
+// HTML rejimidagi xabar uchun qo'shimcha parametrlar (tugmalar bilan)
+function htmlKb(rows) {
+  const clean = rows.filter(Boolean);
+  return clean.length ? Object.assign({ parse_mode: 'HTML' }, Markup.inlineKeyboard(clean)) : { parse_mode: 'HTML' };
 }
 function revealKeyboard(g, p) {
   const left = ATTRS.filter((a) => !p.revealed.includes(a.key));
@@ -641,7 +665,8 @@ function revealKeyboard(g, p) {
   for (let i = 0; i < left.length; i += 2) {
     rows.push(left.slice(i, i + 2).map((a) => Markup.button.callback(`${a.icon} ${a.label}`, `rev_${g.code}_${a.key}`)));
   }
-  return Markup.inlineKeyboard(rows);
+  rows.push(backRow(g));
+  return htmlKb(rows);
 }
 
 async function beginGame(g) {
@@ -987,6 +1012,7 @@ bot.command('bunker', async (ctx) => {
     return ctx.reply('Bu buyruq guruhda ishlaydi. Meni guruhga qo\'shing va /bunker yozing.');
   }
   const g = createRoom(ctx.chat.id, ctx.from.id);
+  g.chatUsername = ctx.chat.username || null;
   const msg = await ctx.reply(lobbyText(g), lobbyKeyboard(g));
   g.msgId = msg.message_id;
 });
@@ -1022,7 +1048,7 @@ bot.start(async (ctx) => {
   const g = games[payload.slice(5)];
   const name = ctx.from.first_name || ctx.from.username || 'O\'yinchi';
   const r = joinPlayer(g, ctx.from.id, name);
-  await ctx.reply(r.text);
+  await ctx.reply(r.text, htmlKb([backRow(g)]));
   if (r.ok) refreshLobby(g);
 });
 
@@ -1046,7 +1072,7 @@ bot.action(/^rev_([A-Z0-9]+)_(\w+)$/, async (ctx) => {
   await ctx.answerCbQuery(r.text);
   const p = findPlayer(g, ctx.from.id);
   try {
-    await ctx.editMessageText(cardText(g, p, false));
+    await ctx.editMessageText(cardText(g, p, false), htmlKb([backRow(g)]));
   } catch (e) {}
 });
 
