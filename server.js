@@ -130,6 +130,31 @@ async function notifyAdmin(html) {
     await bot.telegram.sendMessage(ADMIN_ID, html, { parse_mode: 'HTML', disable_web_page_preview: true });
   } catch (e) {}
 }
+// guruh haqida: nomi, a'zolar soni va kirish havolasi (havola uchun bot admin bo'lishi kerak)
+async function chatInfoHtml(chat) {
+  let members = '?';
+  try {
+    members = await bot.telegram.getChatMembersCount(chat.id);
+  } catch (e) {}
+  const c = DB.chats[chat.id];
+  let link = chat.username ? `https://t.me/${chat.username}` : (c && c.link) || '';
+  if (!link) {
+    try {
+      link = await bot.telegram.exportChatInviteLink(chat.id);
+      if (c) {
+        c.link = link;
+        saveSoon();
+      }
+    } catch (e) {}
+  }
+  return (
+    `\n🏘 Guruh: <b>${esc(chat.title || '')}</b>` +
+    `\n👥 A'zolar: <b>${members}</b>` +
+    (link
+      ? `\n🔗 Kirish havolasi: ${link}`
+      : `\n🔗 Havola yo'q: botni guruhda <b>admin</b> qiling ("havola orqali taklif qilish" huquqi bilan), keyin havola o'zi keladi.`)
+  );
+}
 const startedCount = () => Object.values(DB.users).filter((u) => u.started).length;
 
 async function trackMiddleware(ctx, next) {
@@ -146,7 +171,7 @@ async function trackMiddleware(ctx, next) {
       }
       if (newChat) {
         const total = Object.values(DB.chats).filter((c) => c.active).length;
-        notifyAdmin(`🏘 Bot yangi guruhda ishlatildi: <b>${esc(ctx.chat.title)}</b>\nJami guruh: <b>${total}</b>`);
+        chatInfoHtml(ctx.chat).then((info) => notifyAdmin(`🏘 Bot yangi guruhda ishlatildi:` + info + `\nJami guruh: <b>${total}</b>`));
       }
     }
   } catch (e) {
@@ -353,12 +378,25 @@ bot.on('my_chat_member', async (ctx) => {
     if (ctx.chat.type === 'private') {
       const u = DB.users[ctx.from.id];
       if (u) u.blocked = gone;
-    } else {
+    } else if (gone) {
       const c = DB.chats[ctx.chat.id];
-      if (c) c.active = !gone;
+      if (c) c.active = false;
+    } else {
+      // bot guruhga qo'shildi yoki admin qilindi -> egaga guruh haqida xabar
+      const old = ctx.myChatMember.old_chat_member.status;
+      const wasIn = old === 'member' || old === 'administrator' || old === 'creator';
+      const promoted = old !== 'administrator' && st === 'administrator';
+      trackChat(ctx.chat); // o'rtadagi "yangi guruh" xabari takrorlanmasligi uchun
+      if (!wasIn || promoted) {
+        const head = wasIn ? '⭐ Bot guruhda admin qilindi' : '➕ Bot yangi guruhga qo\'shildi';
+        const adder = ctx.from ? `\nQo'shgan: ${userLink(ctx.from)}` : '';
+        notifyAdmin(head + adder + (await chatInfoHtml(ctx.chat)));
+      }
     }
     saveSoon();
-  } catch (e) {}
+  } catch (e) {
+    console.log('my_chat_member xatosi:', e.message);
+  }
 });
 
 
