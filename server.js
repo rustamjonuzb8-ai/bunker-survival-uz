@@ -4,14 +4,24 @@ const { Telegraf, Markup } = require('telegraf');
 const TOKEN = process.env.BOT_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'Bunkeruz1_bot';
 const WINNERS = 2; // bunkerda doim 2 ta joy
-const MIN_PLAYERS = Math.max(3, Number(process.env.MIN_PLAYERS || 4));
-const REVOTE_SEC = Number(process.env.REVOTE_SEC || 30);
 const MAX_PLAYERS = 12;
-const REVEAL_SEC = Number(process.env.REVEAL_SEC || 60);
-const DISCUSS1_SEC = Number(process.env.DISCUSS1_SEC || 90); // 1-kartadan keyin
-const DISCUSS2_SEC = Number(process.env.DISCUSS2_SEC || 80); // 2-kartadan keyin
-const VOTE_SEC = Number(process.env.VOTE_SEC || 45);
-const BETWEEN_SEC = Number(process.env.BETWEEN_SEC || 4);
+// Quyidagi qiymatlar admin paneldagi "Sozlamalar" bo'limidan o'zgartiriladi (applySettings)
+const ENV_DEFAULTS = {
+  minPlayers: Math.max(3, Number(process.env.MIN_PLAYERS || 4)),
+  reveal: Number(process.env.REVEAL_SEC || 60),
+  discuss1: Number(process.env.DISCUSS1_SEC || 90), // 1-kartadan keyin
+  discuss2: Number(process.env.DISCUSS2_SEC || 80), // 2-kartadan keyin
+  vote: Number(process.env.VOTE_SEC || 45),
+  revote: Number(process.env.REVOTE_SEC || 30),
+  between: Number(process.env.BETWEEN_SEC || 4)
+};
+let MIN_PLAYERS = ENV_DEFAULTS.minPlayers;
+let REVOTE_SEC = ENV_DEFAULTS.revote;
+let REVEAL_SEC = ENV_DEFAULTS.reveal;
+let DISCUSS1_SEC = ENV_DEFAULTS.discuss1;
+let DISCUSS2_SEC = ENV_DEFAULTS.discuss2;
+let VOTE_SEC = ENV_DEFAULTS.vote;
+let BETWEEN_SEC = ENV_DEFAULTS.between;
 
 const bot = new Telegraf(TOKEN || 'no-token');
 const games = {};     // kod -> o'yin
@@ -24,11 +34,54 @@ const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_KEY = process.env.SUPABASE_KEY || '';
 const DATA_FILE = process.env.DATA_FILE || './data.json';
 const DAY_MS = 86400000;
+const BROADCAST_DELAY_MS = Number(process.env.BROADCAST_DELAY_MS || 60);
 const START_TIME = Date.now();
 let DB = { users: {}, chats: {}, gamesStarted: 0, gamesFinished: 0, gamesLog: [] };
 let saveTimer = null;
 let pendingBroadcast = '';
 let broadcasting = false;
+let adminInput = null; // admin shaxsiy xabar yozishni kutayotgan holat: { id, label, isG }
+let pendingDirect = null; // yuborilishi tasdiqlanishini kutayotgan xabar: { id, label, text, isG }
+
+// --- sozlamalar ---
+const SETTING_DEFS = [
+  { key: 'minPlayers', label: "Eng kam o'yinchi", unit: 'kishi', step: 1, min: 3, max: MAX_PLAYERS },
+  { key: 'reveal', label: 'Karta ochish', unit: 'soniya', step: 10, min: 20, max: 180 },
+  { key: 'discuss1', label: '1-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
+  { key: 'discuss2', label: '2-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
+  { key: 'vote', label: 'Ovoz berish', unit: 'soniya', step: 5, min: 15, max: 120 },
+  { key: 'revote', label: 'Qayta ovoz', unit: 'soniya', step: 5, min: 15, max: 120 },
+  { key: 'between', label: "Raund oralig'i", unit: 'soniya', step: 1, min: 1, max: 30 }
+];
+const TOGGLE_DEFS = [
+  { key: 'maintenance', label: 'Texnik ish (yangi o\'yin ochilmaydi)', def: false },
+  { key: 'notifyUsers', label: 'Yangi foydalanuvchi haqida xabar', def: true },
+  { key: 'notifyGroups', label: 'Yangi guruh haqida xabar', def: true }
+];
+function ensureSettings() {
+  const s = DB.settings && typeof DB.settings === 'object' ? DB.settings : {};
+  if (!s.values || typeof s.values !== 'object') s.values = {};
+  TOGGLE_DEFS.forEach((t) => {
+    if (typeof s[t.key] !== 'boolean') s[t.key] = t.def;
+  });
+  DB.settings = s;
+  return s;
+}
+function getSetting(key) {
+  const d = SETTING_DEFS.find((x) => x.key === key);
+  const v = ensureSettings().values[key];
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.min(d.max, Math.max(d.min, v));
+  return ENV_DEFAULTS[key];
+}
+function applySettings() {
+  MIN_PLAYERS = getSetting('minPlayers');
+  REVEAL_SEC = getSetting('reveal');
+  DISCUSS1_SEC = getSetting('discuss1');
+  DISCUSS2_SEC = getSetting('discuss2');
+  VOTE_SEC = getSetting('vote');
+  REVOTE_SEC = getSetting('revote');
+  BETWEEN_SEC = getSetting('between');
+}
 
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const fmtTime = (ts) => new Date(ts + 5 * 3600000).toISOString().slice(5, 16).replace('T', ' ');
@@ -43,6 +96,11 @@ function sbHeaders() {
 
 // --- saqlash va yuklash ---
 async function loadDB() {
+  await loadDBRaw();
+  ensureSettings();
+  applySettings();
+}
+async function loadDBRaw() {
   if (useSb()) {
     try {
       const r = await fetch(`${SB_URL}/rest/v1/store?id=eq.main&select=data`, { headers: sbHeaders() });
@@ -130,26 +188,43 @@ async function notifyAdmin(html) {
     await bot.telegram.sendMessage(ADMIN_ID, html, { parse_mode: 'HTML', disable_web_page_preview: true });
   } catch (e) {}
 }
-// guruh haqida: nomi, a'zolar soni va kirish havolasi (havola uchun bot admin bo'lishi kerak)
-async function chatInfoHtml(chat) {
-  let members = '?';
+// --- guruh ma'lumotlari (Telegram'dan jonli olinadi) ---
+async function memberCount(chatId) {
   try {
-    members = await bot.telegram.getChatMembersCount(chat.id);
-  } catch (e) {}
-  const c = DB.chats[chat.id];
-  let link = chat.username ? `https://t.me/${chat.username}` : (c && c.link) || '';
-  if (!link) {
-    try {
-      link = await bot.telegram.exportChatInviteLink(chat.id);
-      if (c) {
-        c.link = link;
-        saveSoon();
-      }
-    } catch (e) {}
+    return await bot.telegram.callApi('getChatMemberCount', { chat_id: chatId });
+  } catch (e) {
+    return null;
   }
+}
+async function botUserId() {
+  if (bot.botInfo && bot.botInfo.id) return bot.botInfo.id;
+  const me = await bot.telegram.getMe();
+  return me.id;
+}
+// havola: ochiq guruh -> t.me/username; yopiq guruh -> saqlangan yoki yangi yaratilgan taklif havolasi
+// (yangi havola yaratish uchun bot guruhda admin bo'lishi va "havola orqali taklif qilish" huquqi bo'lishi kerak)
+async function ensureChatLink(chat, force) {
+  const c = DB.chats[chat.id];
+  if (chat.username) return `https://t.me/${chat.username}`;
+  if (c && c.link && !force) return c.link;
+  try {
+    const link = await bot.telegram.exportChatInviteLink(chat.id);
+    if (c && link) {
+      c.link = link;
+      saveSoon();
+    }
+    return link || '';
+  } catch (e) {
+    return force ? '' : (c && c.link) || '';
+  }
+}
+// guruh haqida: nomi, a'zolar soni va kirish havolasi
+async function chatInfoHtml(chat) {
+  const members = await memberCount(chat.id);
+  const link = await ensureChatLink(chat, false);
   return (
     `\n🏘 Guruh: <b>${esc(chat.title || '')}</b>` +
-    `\n👥 A'zolar: <b>${members}</b>` +
+    `\n👥 A'zolar: <b>${members == null ? '?' : members}</b>` +
     (link
       ? `\n🔗 Kirish havolasi: ${link}`
       : `\n🔗 Havola yo'q: botni guruhda <b>admin</b> qiling ("havola orqali taklif qilish" huquqi bilan), keyin havola o'zi keladi.`)
@@ -158,6 +233,16 @@ async function chatInfoHtml(chat) {
 const startedCount = () => Object.values(DB.users).filter((u) => u.started).length;
 
 async function trackMiddleware(ctx, next) {
+  // taqiqlangan foydalanuvchi botdan foydalana olmaydi (bot egasi bundan mustasno)
+  const me = ctx.from && DB.users[ctx.from.id];
+  if (me && me.banned && ctx.from.id !== ADMIN_ID && ctx.updateType !== 'my_chat_member') {
+    try {
+      if (ctx.callbackQuery) await ctx.answerCbQuery('Siz botdan foydalanishdan chetlatilgansiz.', { show_alert: true });
+      else if (ctx.chat && ctx.chat.type === 'private') await ctx.reply('Siz botdan foydalanishdan chetlatilgansiz.');
+    } catch (e) {}
+    return;
+  }
+  const st = ensureSettings();
   try {
     const text = ctx.message && typeof ctx.message.text === 'string' ? ctx.message.text : '';
     const isPrivate = ctx.chat && ctx.chat.type === 'private';
@@ -166,10 +251,10 @@ async function trackMiddleware(ctx, next) {
       const isStart = isPrivate && text.startsWith('/start');
       const newStart = trackUser(ctx.from, isStart);
       const newChat = trackChat(ctx.chat);
-      if (newStart && ctx.from.id !== ADMIN_ID) {
+      if (newStart && ctx.from.id !== ADMIN_ID && st.notifyUsers) {
         notifyAdmin(`🆕 Yangi foydalanuvchi: ${userLink(ctx.from)}\nJami: <b>${startedCount()}</b>`);
       }
-      if (newChat) {
+      if (newChat && st.notifyGroups) {
         const total = Object.values(DB.chats).filter((c) => c.active).length;
         chatInfoHtml(ctx.chat).then((info) => notifyAdmin(`🏘 Bot yangi guruhda ishlatildi:` + info + `\nJami guruh: <b>${total}</b>`));
       }
@@ -199,21 +284,42 @@ function recordGameEnd(g) {
 
 // --- admin ko'rinishlari ---
 const isAdmin = (ctx) => !!(ADMIN_ID && ctx.from && ctx.from.id === ADMIN_ID);
+const PER_PAGE = 8;
+const short = (s, n) => {
+  s = String(s == null ? '' : s);
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+};
 const menuKb = () =>
   Markup.inlineKeyboard([
-    [Markup.button.callback('📊 Statistika', 'adm_stats'), Markup.button.callback('🔥 Faollar', 'adm_active')],
-    [Markup.button.callback('🆕 Yangi odamlar', 'adm_new'), Markup.button.callback('🏘 Guruhlar', 'adm_chats')],
-    [Markup.button.callback('🎮 Hozirgi o\'yinlar', 'adm_live'), Markup.button.callback('📢 Xabar yuborish', 'adm_bc')]
+    [Markup.button.callback('📊 Statistika', 'adm_stats'), Markup.button.callback('🏘 Guruhlar', 'adm_g_0')],
+    [Markup.button.callback('👥 Foydalanuvchilar', 'adm_u_all_0'), Markup.button.callback('🎮 O\'yinlar', 'adm_live')],
+    [Markup.button.callback('📢 Xabar yuborish', 'adm_bc'), Markup.button.callback('⚙️ Sozlamalar', 'adm_set')]
   ]);
 const backKb = (name) =>
   Markup.inlineKeyboard([[Markup.button.callback('⬅️ Menyu', 'adm_menu'), Markup.button.callback('🔄 Yangilash', `adm_${name}`)]]);
 const MENU_TEXT = '🛠 BUNKER boshqaruv paneli\n\nKerakli bo\'limni tanlang:';
+
+function paginate(list, page, per) {
+  per = per || PER_PAGE;
+  const pages = Math.max(1, Math.ceil(list.length / per));
+  const p = Math.min(Math.max(0, Number(page) || 0), pages - 1);
+  return { items: list.slice(p * per, p * per + per), page: p, pages };
+}
+function navRow(prefix, p) {
+  const row = [];
+  if (p.page > 0) row.push(Markup.button.callback('⬅️', `${prefix}${p.page - 1}`));
+  row.push(Markup.button.callback(`${p.page + 1}/${p.pages}`, 'adm_noop'));
+  if (p.page < p.pages - 1) row.push(Markup.button.callback('➡️', `${prefix}${p.page + 1}`));
+  return row;
+}
+const broadcastTargets = () => Object.values(DB.users).filter((u) => u.started && !u.blocked && !u.banned);
 
 function viewStats() {
   const now = Date.now();
   const users = Object.values(DB.users);
   const started = users.filter((u) => u.started);
   const blocked = started.filter((u) => u.blocked).length;
+  const banned = users.filter((u) => u.banned).length;
   const within = (d) => users.filter((u) => now - u.last < d * DAY_MS).length;
   const newIn = (d) => started.filter((u) => now - u.first < d * DAY_MS).length;
   const chats = Object.values(DB.chats);
@@ -223,35 +329,170 @@ function viewStats() {
     `📊 <b>BUNKER statistikasi</b>\n\n` +
     `👥 Botga start bosganlar: <b>${started.length}</b>\n` +
     `   🆕 24 soatda: ${newIn(1)} | 7 kunda: ${newIn(7)}\n` +
-    `   🚫 Botni bloklaganlar: ${blocked}\n\n` +
+    `   🚫 Botni bloklaganlar: ${blocked}\n` +
+    `   ⛔ Taqiqlanganlar: ${banned}\n\n` +
     `🔥 Faol foydalanuvchilar:\n   24 soat: <b>${within(1)}</b> | 7 kun: <b>${within(7)}</b> | 30 kun: <b>${within(30)}</b>\n\n` +
     `🏘 Guruhlar: <b>${activeChats}</b> (jami qo'shilgan: ${chats.length})\n\n` +
     `🎮 O'yinlar: boshlangan <b>${DB.gamesStarted || 0}</b>, tugagan <b>${DB.gamesFinished || 0}</b>\n` +
     `   Hozir o'ynalayotgan: <b>${live}</b>\n\n` +
+    (ensureSettings().maintenance ? `🛠 <b>Texnik ish rejimi YOQILGAN</b> (yangi o'yin ochilmaydi)\n\n` : '') +
     `🕒 Server ishga tushgan: ${fmtTime(START_TIME)}\n` +
     `💾 Saqlash: ${useSb() ? 'Supabase (doimiy)' : 'vaqtinchalik fayl (qayta ishga tushsa o\'chishi mumkin)'}`;
   return { text, kb: backKb('stats') };
 }
-function viewNew() {
-  const list = Object.values(DB.users).filter((u) => u.started).sort((a, b) => b.first - a.first).slice(0, 15);
-  const body = list.length ? list.map((u, i) => `${i + 1}. ${userLink(u)} - ${fmtTime(u.first)}`).join('\n') : 'Hali hech kim yo\'q.';
-  return { text: `🆕 <b>Oxirgi 15 ta yangi foydalanuvchi</b>\n\n${body}`, kb: backKb('new') };
-}
-function viewActive() {
+
+// ----- foydalanuvchilar -----
+const USER_FILTERS = { all: 'Hammasi', new: 'Yangi', active: 'Faol', banned: 'Taqiq' };
+function userList(filter) {
   const now = Date.now();
-  const list = Object.values(DB.users).filter((u) => now - u.last < 7 * DAY_MS).sort((a, b) => b.last - a.last);
-  const body = list.length
-    ? list.slice(0, 15).map((u, i) => `${i + 1}. ${userLink(u)} - ${fmtTime(u.last)} | o'yin: ${u.games || 0}`).join('\n')
-    : 'Oxirgi 7 kunda faol odam yo\'q.';
-  return { text: `🔥 <b>Faol foydalanuvchilar (7 kun): ${list.length} kishi</b>\nEng so'nggi 15 tasi:\n\n${body}`, kb: backKb('active') };
+  const all = Object.values(DB.users);
+  const byLast = (a, b) => (b.last || 0) - (a.last || 0);
+  if (filter === 'new') return all.filter((u) => u.started).sort((a, b) => (b.first || 0) - (a.first || 0));
+  if (filter === 'active') return all.filter((u) => now - (u.last || 0) < 7 * DAY_MS).sort(byLast);
+  if (filter === 'banned') return all.filter((u) => u.banned).sort(byLast);
+  return all.sort(byLast);
 }
-function viewChats() {
-  const list = Object.values(DB.chats).filter((c) => c.active).sort((a, b) => b.last - a.last);
-  const body = list.length
-    ? list.slice(0, 15).map((c, i) => `${i + 1}. <b>${esc(c.title || c.id)}</b> - o'yin: ${c.games || 0} | oxirgi: ${fmtTime(c.last)}`).join('\n')
-    : 'Hali hech qaysi guruhda ishlatilmagan.';
-  return { text: `🏘 <b>Guruhlar: ${list.length} ta</b>\n\n${body}`, kb: backKb('chats') };
+const userLabel = (u) => short(`${u.banned ? '⛔ ' : ''}${u.name || 'Nomalum'}${u.username ? ' @' + u.username : ''} · ${u.games || 0}`, 48);
+function viewUsers(filter, page) {
+  if (!USER_FILTERS[filter]) filter = 'all';
+  const list = userList(filter);
+  const p = paginate(list, page);
+  const tabs = Object.keys(USER_FILTERS).map((k) => Markup.button.callback((k === filter ? '• ' : '') + USER_FILTERS[k], `adm_u_${k}_0`));
+  const rows = [tabs];
+  p.items.forEach((u) => rows.push([Markup.button.callback(userLabel(u), `adm_ui_${u.id}`)]));
+  rows.push(navRow(`adm_u_${filter}_`, p));
+  rows.push([Markup.button.callback('⬅️ Menyu', 'adm_menu'), Markup.button.callback('🔄 Yangilash', `adm_u_${filter}_${p.page}`)]);
+  const text =
+    `👥 <b>Foydalanuvchilar</b> (${USER_FILTERS[filter]}): <b>${list.length}</b> ta\n\n` +
+    (list.length ? `Kerakli odamni bosing (raqam - o'ynagan o'yinlari).` : `Bu bo'limda hech kim yo'q.`) +
+    `\n\n🔎 Qidirish: <code>/odam ism</code>, <code>/odam @username</code> yoki <code>/odam ID</code>`;
+  return { text, kb: Markup.inlineKeyboard(rows) };
 }
+function viewUser(id) {
+  const u = DB.users[id];
+  const back = [Markup.button.callback('⬅️ Foydalanuvchilar', 'adm_u_all_0')];
+  if (!u) return { text: 'Foydalanuvchi topilmadi.', kb: Markup.inlineKeyboard([back]) };
+  const text =
+    `👤 <b>${esc(u.name || 'Nomalum')}</b>${u.username ? ' @' + esc(u.username) : ''}\n` +
+    `🆔 <code>${u.id}</code>\n\n` +
+    `📅 Birinchi kirgan: ${u.first ? fmtTime(u.first) : '-'}\n` +
+    `🕒 Oxirgi faollik: ${u.last ? fmtTime(u.last) : '-'}\n` +
+    `🎮 O'ynagan o'yinlari: <b>${u.games || 0}</b>\n` +
+    `▶️ Start bosgan: ${u.started ? 'ha' : 'yo\'q'} | 🚫 Botni bloklagan: ${u.blocked ? 'ha' : 'yo\'q'}\n` +
+    `⛔ Holat: <b>${u.banned ? 'TAQIQLANGAN' : 'oddiy'}</b>\n\n` +
+    `<a href="tg://user?id=${u.id}">Profilini ochish</a>`;
+  const rows = [
+    [
+      u.banned ? Markup.button.callback('✅ Taqiqni olib tashlash', `adm_uu_${u.id}`) : Markup.button.callback('⛔ Taqiqlash', `adm_ub_${u.id}`),
+      Markup.button.callback('📩 Xabar yozish', `adm_m_u_${u.id}`)
+    ],
+    [Markup.button.callback('⬅️ Foydalanuvchilar', 'adm_u_all_0'), Markup.button.callback('🔄 Yangilash', `adm_ui_${u.id}`)]
+  ];
+  return { text, kb: Markup.inlineKeyboard(rows) };
+}
+function findUsers(q) {
+  q = String(q || '').trim().toLowerCase().replace(/^@/, '');
+  if (!q) return [];
+  const all = Object.values(DB.users);
+  if (/^\d+$/.test(q) && DB.users[q]) return [DB.users[q]];
+  return all
+    .filter((u) => String(u.id) === q || (u.username || '').toLowerCase() === q || (u.name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q))
+    .sort((a, b) => (b.last || 0) - (a.last || 0))
+    .slice(0, PER_PAGE);
+}
+
+// ----- guruhlar -----
+function viewGroups(page) {
+  const list = Object.values(DB.chats).sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || (b.last || 0) - (a.last || 0));
+  const p = paginate(list, page);
+  const rows = p.items.map((c) => [Markup.button.callback(short(`${c.active ? '🏘' : '🚫'} ${c.title || c.id} · 🎮${c.games || 0}`, 48), `adm_gi_${c.id}`)]);
+  rows.push(navRow('adm_g_', p));
+  rows.push([Markup.button.callback('⬅️ Menyu', 'adm_menu'), Markup.button.callback('🔄 Yangilash', `adm_g_${p.page}`)]);
+  const active = list.filter((c) => c.active).length;
+  const text =
+    `🏘 <b>Guruhlar</b>: faol <b>${active}</b>, jami ${list.length}\n\n` +
+    (list.length ? `Guruhni bosing: a'zolar soni, kirish havolasi va boshqaruv tugmalari chiqadi.\n🚫 - bot chiqib ketgan guruh. 🎮 - o'yinlar soni.` : `Hali hech qaysi guruhda ishlatilmagan.`);
+  return { text, kb: Markup.inlineKeyboard(rows) };
+}
+const isGone = (e) => !!(e && e.response && (e.response.error_code === 400 || e.response.error_code === 403));
+async function viewGroup(id) {
+  const c = DB.chats[id];
+  const back = [Markup.button.callback('⬅️ Guruhlar', 'adm_g_0')];
+  if (!c) return { text: 'Guruh topilmadi.', kb: Markup.inlineKeyboard([back]) };
+  let info = null;
+  let offline = false;
+  try {
+    info = await bot.telegram.getChat(id);
+  } catch (e) {
+    if (isGone(e)) {
+      c.active = false;
+      saveSoon();
+    } else {
+      offline = true;
+    }
+  }
+  let members = null;
+  let botStatus = null;
+  let canInvite = false;
+  let link = '';
+  if (info) {
+    c.title = info.title || c.title;
+    c.active = true;
+    members = await memberCount(id);
+    try {
+      const m = await bot.telegram.getChatMember(id, await botUserId());
+      botStatus = m.status;
+      canInvite = m.status === 'administrator' && m.can_invite_users !== false;
+    } catch (e) {}
+    link = await ensureChatLink({ id, username: info.username }, false);
+  } else if (c.link) {
+    link = c.link;
+  }
+  const g = games[chatGame[id]];
+  const live = g && !g.finished ? g : null;
+  const adminLine =
+    botStatus === 'administrator'
+      ? canInvite
+        ? '✅ admin (havola yarata oladi)'
+        : '⚠️ admin, lekin "havola orqali taklif qilish" huquqi yo\'q'
+      : botStatus
+        ? '⚪ oddiy a\'zo (havola uchun admin qilish kerak)'
+        : '❓ aniqlanmadi';
+  const text =
+    `🏘 <b>${esc(c.title || id)}</b>\n` +
+    `🆔 <code>${id}</code>${info && info.username ? ' @' + esc(info.username) : ''}\n\n` +
+    (info
+      ? `👥 A'zolar: <b>${members == null ? '?' : members}</b>\n🤖 Botning huquqi: ${adminLine}\n`
+      : offline
+        ? `⚠️ Telegram javob bermadi, keyinroq "Yangilash" ni bosing.\n`
+        : `🚫 Bot bu guruhda yo'q (chiqarilgan yoki guruh yopilgan).\n`) +
+    (link ? `🔗 Havola: ${link}\n` : info ? `🔗 Havola yo'q: botni guruhda admin qiling ("havola orqali taklif qilish" huquqi bilan).\n` : '') +
+    `\n🎮 O'yinlar: <b>${c.games || 0}</b>\n` +
+    `📅 Qo'shilgan: ${c.first ? fmtTime(c.first) : '-'} | oxirgi: ${c.last ? fmtTime(c.last) : '-'}\n` +
+    (live ? `▶️ Hozirgi o'yin: <b>${esc(live.code)}</b>, ${live.players.length} kishi, raund ${live.round}` : `▶️ Hozirgi o'yin: yo'q`);
+  const rows = [];
+  if (link && /^https?:\/\//.test(link)) rows.push([Markup.button.url('🚪 Guruhga kirish', link)]);
+  if (info) {
+    const r = [Markup.button.callback('📩 Guruhga xabar', `adm_m_g_${id}`)];
+    if (botStatus === 'administrator' && !info.username) r.push(Markup.button.callback('🔗 Yangi havola', `adm_gn_${id}`));
+    rows.push(r);
+    const r2 = [];
+    if (live) r2.push(Markup.button.callback('🛑 O\'yinni to\'xtatish', `adm_gs_${id}`));
+    r2.push(Markup.button.callback('🚪 Guruhdan chiqish', `adm_gl_${id}`));
+    rows.push(r2);
+  }
+  rows.push([Markup.button.callback('⬅️ Guruhlar', 'adm_g_0'), Markup.button.callback('🔄 Yangilash', `adm_gi_${id}`)]);
+  return { text, kb: Markup.inlineKeyboard(rows) };
+}
+function viewGroupLeave(id) {
+  const c = DB.chats[id];
+  return {
+    text: `🚪 <b>${esc((c && c.title) || id)}</b> guruhidan chiqaymi?\n\nBot guruhdan chiqadi va u yerdagi o'yin to'xtatiladi. Qaytadan kirish uchun guruh a'zolari botni yana qo'shishi kerak.`,
+    kb: Markup.inlineKeyboard([[Markup.button.callback('✅ Ha, chiqish', `adm_gy_${id}`), Markup.button.callback('❌ Yo\'q', `adm_gi_${id}`)]])
+  };
+}
+
+// ----- o'yinlar va xabar yuborish -----
 function viewLive() {
   const live = Object.values(games).filter((g) => !g.finished);
   const PH = { lobby: 'xona ochiq', reveal: 'karta ochish', summary: 'natija', discuss: 'muhokama', vote: 'ovoz berish', between: 'raund oralig\'i' };
@@ -268,19 +509,56 @@ function viewLive() {
   return { text: `🎮 <b>Hozirgi o'yinlar</b>\n\n${body}`, kb: Markup.inlineKeyboard(rows) };
 }
 function viewBroadcast() {
-  const n = Object.values(DB.users).filter((u) => u.started && !u.blocked).length;
+  const n = broadcastTargets().length;
   return {
-    text: `📢 <b>Xabar yuborish</b>\n\nBotga start bosgan <b>${n}</b> kishiga xabar yuboriladi.\n\nBuyruq bilan yozing:\n<code>/xabar Salom! Yangi o'yin qo'shildi 🎉</code>\n\nAvval ko'rib chiqish chiqadi, "Yuborish" tugmasini bosgandan keyingina ketadi.`,
+    text: `📢 <b>Xabar yuborish</b>\n\nBotga start bosgan <b>${n}</b> kishiga xabar yuboriladi (taqiqlanganlarga yuborilmaydi).\n\nBuyruq bilan yozing:\n<code>/xabar Salom! Yangi o'yin qo'shildi 🎉</code>\n\nAvval ko'rib chiqish chiqadi, "Yuborish" tugmasini bosgandan keyingina ketadi.\n\nBitta odamga yoki bitta guruhga yozish uchun uning kartochkasidagi "Xabar" tugmasidan foydalaning.`,
     kb: backKb('bc')
   };
 }
-const VIEWS = { stats: viewStats, active: viewActive, new: viewNew, chats: viewChats, live: viewLive, bc: viewBroadcast };
+
+// ----- sozlamalar -----
+function viewSettings() {
+  const s = ensureSettings();
+  const lines = SETTING_DEFS.map((d) => `• ${d.label}: <b>${getSetting(d.key)}</b> ${d.unit}`).join('\n');
+  const tl = TOGGLE_DEFS.map((t) => `• ${t.label}: <b>${s[t.key] ? 'YOQILGAN' : 'o\'chiq'}</b>`).join('\n');
+  const rows = SETTING_DEFS.map((d) => [
+    Markup.button.callback('➖', `adm_s_${d.key}_d`),
+    Markup.button.callback(`${d.label}: ${getSetting(d.key)}`, 'adm_noop'),
+    Markup.button.callback('➕', `adm_s_${d.key}_u`)
+  ]);
+  TOGGLE_DEFS.forEach((t) => rows.push([Markup.button.callback(`${s[t.key] ? '✅' : '⬜'} ${t.label}`, `adm_t_${t.key}`)]));
+  rows.push([Markup.button.callback('♻️ Vaqtlarni asl holiga', 'adm_s_reset'), Markup.button.callback('⬅️ Menyu', 'adm_menu')]);
+  return {
+    text: `⚙️ <b>Sozlamalar</b>\n\n<b>O'yin:</b>\n${lines}\n\n<b>Bot:</b>\n${tl}\n\n➖ ➕ tugmalari qiymatni o'zgartiradi. Yangi qiymat keyingi bosqichdan boshlab kuchga kiradi va bot qayta ishga tushsa ham saqlanadi.`,
+    kb: Markup.inlineKeyboard(rows)
+  };
+}
+
+const VIEWS = {
+  stats: viewStats,
+  active: () => viewUsers('active', 0),
+  new: () => viewUsers('new', 0),
+  chats: () => viewGroups(0),
+  live: viewLive,
+  bc: viewBroadcast,
+  set: viewSettings
+};
+const viewNew = VIEWS.new;
+const viewActive = VIEWS.active;
+const viewChats = VIEWS.chats;
 
 async function showView(ctx, v) {
+  v = await v;
   const extra = Object.assign({ parse_mode: 'HTML', disable_web_page_preview: true }, v.kb);
   try {
     await ctx.editMessageText(v.text, extra);
-  } catch (e) {}
+  } catch (e) {
+    if (!/not modified/i.test(e.message || '')) console.log('panel yangilash xatosi:', e.message);
+  }
+}
+async function sendView(ctx, v) {
+  v = await v;
+  await ctx.reply(v.text, Object.assign({ parse_mode: 'HTML', disable_web_page_preview: true }, v.kb));
 }
 
 // --- buyruqlar ---
@@ -297,20 +575,34 @@ bot.command('admin', async (ctx) => {
   await ctx.reply(MENU_TEXT, menuKb());
 });
 
-bot.action(/^adm_(stats|active|new|chats|live|bc)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+// admin tugmalari uchun umumiy o'ram: faqat bot egasi bosa oladi, xatolar botni yiqitmaydi
+function adminAction(re, fn) {
+  bot.action(re, async (ctx) => {
+    if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+    try {
+      await fn(ctx);
+    } catch (e) {
+      console.log('admin xatosi:', e.message);
+      try {
+        await ctx.answerCbQuery('Xatolik: ' + short(e.message, 150), { show_alert: true });
+      } catch (_) {}
+    }
+  });
+}
+const idOf = (ctx) => Number(ctx.match[1]);
+
+adminAction(/^adm_(stats|active|new|chats|live|bc|set)$/, async (ctx) => {
   await ctx.answerCbQuery();
   await showView(ctx, VIEWS[ctx.match[1]]());
 });
-bot.action('adm_menu', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+adminAction('adm_noop', (ctx) => ctx.answerCbQuery());
+adminAction('adm_menu', async (ctx) => {
   await ctx.answerCbQuery();
   try {
     await ctx.editMessageText(MENU_TEXT, menuKb());
   } catch (e) {}
 });
-bot.action(/^adm_stop_([A-Z0-9]+)$/, async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+adminAction(/^adm_stop_([A-Z0-9]+)$/, async (ctx) => {
   const g = games[ctx.match[1]];
   if (g && !g.finished) {
     closeGame(g);
@@ -322,27 +614,191 @@ bot.action(/^adm_stop_([A-Z0-9]+)$/, async (ctx) => {
   await showView(ctx, viewLive());
 });
 
+// ----- guruhlar -----
+adminAction(/^adm_g_(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewGroups(ctx.match[1]));
+});
+adminAction(/^adm_gi_(-?\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewGroup(idOf(ctx)));
+});
+adminAction(/^adm_gn_(-?\d+)$/, async (ctx) => {
+  const id = idOf(ctx);
+  let info;
+  try {
+    info = await bot.telegram.getChat(id);
+  } catch (e) {
+    return ctx.answerCbQuery('Guruhga ulanib bo\'lmadi: ' + short(e.message, 120), { show_alert: true });
+  }
+  const link = await ensureChatLink({ id, username: info.username }, true);
+  await ctx.answerCbQuery(link ? 'Yangi havola olindi' : 'Havola yaratib bo\'lmadi: bot admin emas yoki huquqi yo\'q', { show_alert: !link });
+  await showView(ctx, viewGroup(id));
+});
+adminAction(/^adm_gl_(-?\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewGroupLeave(idOf(ctx)));
+});
+adminAction(/^adm_gy_(-?\d+)$/, async (ctx) => {
+  const id = idOf(ctx);
+  try {
+    await bot.telegram.leaveChat(id);
+  } catch (e) {
+    return ctx.answerCbQuery('Chiqib bo\'lmadi: ' + short(e.message, 120), { show_alert: true });
+  }
+  const c = DB.chats[id];
+  if (c) c.active = false;
+  const g = games[chatGame[id]];
+  if (g && !g.finished) closeGame(g);
+  saveSoon();
+  await ctx.answerCbQuery('Guruhdan chiqildi');
+  await showView(ctx, viewGroups(0));
+});
+adminAction(/^adm_gs_(-?\d+)$/, async (ctx) => {
+  const id = idOf(ctx);
+  const g = games[chatGame[id]];
+  if (g && !g.finished) {
+    closeGame(g);
+    say(id, '🛑 O\'yin bot egasi tomonidan to\'xtatildi. Yangi o\'yin uchun /bunker yozing.');
+    await ctx.answerCbQuery('To\'xtatildi');
+  } else {
+    await ctx.answerCbQuery('Bu guruhda faol o\'yin yo\'q.');
+  }
+  await showView(ctx, viewGroup(id));
+});
+
+// ----- foydalanuvchilar -----
+adminAction(/^adm_u_(all|new|active|banned)_(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewUsers(ctx.match[1], ctx.match[2]));
+});
+adminAction(/^adm_ui_(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewUser(idOf(ctx)));
+});
+adminAction(/^adm_ub_(\d+)$/, async (ctx) => {
+  const id = idOf(ctx);
+  const u = DB.users[id];
+  if (!u) return ctx.answerCbQuery('Foydalanuvchi topilmadi.', { show_alert: true });
+  if (id === ADMIN_ID) return ctx.answerCbQuery('Bot egasini taqiqlab bo\'lmaydi.', { show_alert: true });
+  u.banned = true;
+  saveSoon();
+  await ctx.answerCbQuery('Taqiqlandi');
+  await showView(ctx, viewUser(id));
+});
+adminAction(/^adm_uu_(\d+)$/, async (ctx) => {
+  const id = idOf(ctx);
+  const u = DB.users[id];
+  if (!u) return ctx.answerCbQuery('Foydalanuvchi topilmadi.', { show_alert: true });
+  u.banned = false;
+  saveSoon();
+  await ctx.answerCbQuery('Taqiq olib tashlandi');
+  await showView(ctx, viewUser(id));
+});
+bot.command('odam', async (ctx) => {
+  if (ctx.chat.type !== 'private' || !isAdmin(ctx)) return;
+  const q = ctx.message.text.replace(/^\/odam(@\w+)?\s*/i, '').trim();
+  if (!q) return ctx.reply('Kimni qidiramiz? Masalan:\n/odam Ali\n/odam @username\n/odam 123456789');
+  const found = findUsers(q);
+  if (!found.length) return ctx.reply('Hech kim topilmadi.');
+  if (found.length === 1) return sendView(ctx, viewUser(found[0].id));
+  const rows = found.map((u) => [Markup.button.callback(userLabel(u), `adm_ui_${u.id}`)]);
+  rows.push([Markup.button.callback('⬅️ Menyu', 'adm_menu')]);
+  await ctx.reply(`🔎 Topildi: ${found.length} ta`, Markup.inlineKeyboard(rows));
+});
+
+// ----- bitta odamga yoki bitta guruhga xabar -----
+adminAction(/^adm_m_(g|u)_(-?\d+)$/, async (ctx) => {
+  const isG = ctx.match[1] === 'g';
+  const id = Number(ctx.match[2]);
+  const rec = isG ? DB.chats[id] : DB.users[id];
+  const label = isG ? (rec && rec.title) || String(id) : (rec && rec.name) || String(id);
+  adminInput = { id, label, isG };
+  pendingDirect = null;
+  await ctx.answerCbQuery();
+  await showView(ctx, {
+    text: `✍️ <b>${esc(label)}</b> ga yuboriladigan xabarni shu yerga yozing.`,
+    kb: Markup.inlineKeyboard([[Markup.button.callback('❌ Bekor qilish', 'adm_mcancel')]])
+  });
+});
+adminAction('adm_mcancel', async (ctx) => {
+  adminInput = null;
+  pendingDirect = null;
+  await ctx.answerCbQuery('Bekor qilindi');
+  try {
+    await ctx.editMessageText('❌ Xabar yuborish bekor qilindi.');
+  } catch (e) {}
+});
+adminAction('adm_mgo', async (ctx) => {
+  const d = pendingDirect;
+  if (!d) return ctx.answerCbQuery('Yuboriladigan xabar yo\'q.', { show_alert: true });
+  pendingDirect = null;
+  let res;
+  try {
+    await bot.telegram.sendMessage(d.id, d.text);
+    res = `✅ Yuborildi: ${d.label}`;
+    await ctx.answerCbQuery('Yuborildi');
+  } catch (e) {
+    if (!d.isG && e && e.response && e.response.error_code === 403 && DB.users[d.id]) {
+      DB.users[d.id].blocked = true;
+      saveSoon();
+    }
+    res = `❌ Yuborilmadi (${d.label}): ${short(e.message, 200)}`;
+    await ctx.answerCbQuery('Yuborilmadi', { show_alert: true });
+  }
+  try {
+    await ctx.editMessageText(res);
+  } catch (e) {}
+});
+
+// ----- sozlamalar -----
+adminAction(new RegExp(`^adm_s_(${SETTING_DEFS.map((d) => d.key).join('|')})_(d|u)$`), async (ctx) => {
+  const d = SETTING_DEFS.find((x) => x.key === ctx.match[1]);
+  const up = ctx.match[2] === 'u';
+  const cur = getSetting(d.key);
+  const next = Math.min(d.max, Math.max(d.min, cur + (up ? d.step : -d.step)));
+  if (next === cur) return ctx.answerCbQuery(`Chegara: ${up ? 'eng ko\'pi' : 'eng kami'} ${cur} ${d.unit}`);
+  ensureSettings().values[d.key] = next;
+  applySettings();
+  saveSoon();
+  await ctx.answerCbQuery(`${d.label}: ${next} ${d.unit}`);
+  await showView(ctx, viewSettings());
+});
+adminAction('adm_s_reset', async (ctx) => {
+  ensureSettings().values = {};
+  applySettings();
+  saveSoon();
+  await ctx.answerCbQuery('Asl holiga qaytarildi');
+  await showView(ctx, viewSettings());
+});
+adminAction(new RegExp(`^adm_t_(${TOGGLE_DEFS.map((t) => t.key).join('|')})$`), async (ctx) => {
+  const s = ensureSettings();
+  const key = ctx.match[1];
+  s[key] = !s[key];
+  saveSoon();
+  await ctx.answerCbQuery(s[key] ? 'Yoqildi' : 'O\'chirildi');
+  await showView(ctx, viewSettings());
+});
+
+// ----- hammaga xabar -----
 bot.command('xabar', async (ctx) => {
   if (ctx.chat.type !== 'private' || !isAdmin(ctx)) return;
   const text = ctx.message.text.replace(/^\/xabar(@\w+)?\s*/i, '').trim();
   if (!text) return ctx.reply('Xabar matnini buyruq bilan birga yozing:\n/xabar Salom! Yangi o\'yin qo\'shildi 🎉');
-  const targets = Object.values(DB.users).filter((u) => u.started && !u.blocked).length;
   pendingBroadcast = text;
   await ctx.reply(
-    `📢 Quyidagi xabar ${targets} kishiga yuboriladi:\n\n${text}`,
+    `📢 Quyidagi xabar ${broadcastTargets().length} kishiga yuboriladi:\n\n${text}`,
     Markup.inlineKeyboard([[Markup.button.callback('✅ Yuborish', 'adm_bc_go'), Markup.button.callback('❌ Bekor qilish', 'adm_bc_cancel')]])
   );
 });
-bot.action('adm_bc_cancel', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+adminAction('adm_bc_cancel', async (ctx) => {
   pendingBroadcast = '';
   await ctx.answerCbQuery('Bekor qilindi');
   try {
     await ctx.editMessageText('❌ Xabar yuborish bekor qilindi.');
   } catch (e) {}
 });
-bot.action('adm_bc_go', async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.answerCbQuery('Faqat bot egasi uchun.', { show_alert: true });
+adminAction('adm_bc_go', async (ctx) => {
   if (!pendingBroadcast) return ctx.answerCbQuery('Yuboriladigan xabar yo\'q.', { show_alert: true });
   if (broadcasting) return ctx.answerCbQuery('Yuborish davom etmoqda.', { show_alert: true });
   await ctx.answerCbQuery('Yuborish boshlandi...');
@@ -354,19 +810,21 @@ bot.action('adm_bc_go', async (ctx) => {
   broadcasting = true;
   let ok = 0;
   let fail = 0;
-  for (const u of Object.values(DB.users)) {
-    if (!u.started || u.blocked) continue;
-    try {
-      await bot.telegram.sendMessage(u.id, text);
-      ok++;
-    } catch (e) {
-      fail++;
-      if (e && e.response && e.response.error_code === 403) u.blocked = true;
+  try {
+    for (const u of broadcastTargets()) {
+      try {
+        await bot.telegram.sendMessage(u.id, text);
+        ok++;
+      } catch (e) {
+        fail++;
+        if (e && e.response && e.response.error_code === 403) u.blocked = true;
+      }
+      await new Promise((r) => setTimeout(r, BROADCAST_DELAY_MS));
     }
-    await new Promise((r) => setTimeout(r, 60));
+  } finally {
+    broadcasting = false;
+    saveSoon();
   }
-  broadcasting = false;
-  saveSoon();
   await notifyAdmin(`📢 Xabar yuborildi.\n✅ Yetib bordi: <b>${ok}</b>\n❌ Yetmadi: <b>${fail}</b>`);
 });
 
@@ -387,7 +845,7 @@ bot.on('my_chat_member', async (ctx) => {
       const wasIn = old === 'member' || old === 'administrator' || old === 'creator';
       const promoted = old !== 'administrator' && st === 'administrator';
       trackChat(ctx.chat); // o'rtadagi "yangi guruh" xabari takrorlanmasligi uchun
-      if (!wasIn || promoted) {
+      if ((!wasIn || promoted) && ensureSettings().notifyGroups) {
         const head = wasIn ? '⭐ Bot guruhda admin qilindi' : '➕ Bot yangi guruhga qo\'shildi';
         const adder = ctx.from ? `\nQo'shgan: ${userLink(ctx.from)}` : '';
         notifyAdmin(head + adder + (await chatInfoHtml(ctx.chat)));
@@ -1049,6 +1507,9 @@ bot.command('bunker', async (ctx) => {
   if (ctx.chat.type === 'private') {
     return ctx.reply('Bu buyruq guruhda ishlaydi. Meni guruhga qo\'shing va /bunker yozing.');
   }
+  if (ensureSettings().maintenance && !isAdmin(ctx)) {
+    return ctx.reply('🛠 Bot hozir texnik ishlar uchun vaqtincha yopiq. Birozdan keyin qayta urinib ko\'ring.');
+  }
   const g = createRoom(ctx.chat.id, ctx.from.id);
   g.chatUsername = ctx.chat.username || null;
   const msg = await ctx.reply(lobbyText(g), lobbyKeyboard(g));
@@ -1130,6 +1591,19 @@ bot.action(/^vote_([A-Z0-9]+)_(\d+)$/, async (ctx) => {
   return ctx.answerCbQuery(r.text, { show_alert: !r.ok });
 });
 
+// bot egasi "Xabar yozish" tugmasini bosgandan keyin yozgan oddiy matn -> ko'rib chiqish va tasdiqlash
+bot.on('text', async (ctx, next) => {
+  const text = ctx.message.text;
+  if (ctx.chat.type !== 'private' || !isAdmin(ctx) || !adminInput || text.startsWith('/')) return next();
+  if (text.length > 4000) return ctx.reply('Xabar juda uzun (4000 belgidan oshmasin). Qisqaroq yozing.');
+  pendingDirect = { id: adminInput.id, label: adminInput.label, isG: adminInput.isG, text };
+  adminInput = null;
+  await ctx.reply(
+    `📩 "${pendingDirect.label}" ga quyidagi xabar yuboriladi:\n\n${short(text, 3000)}`,
+    Markup.inlineKeyboard([[Markup.button.callback('✅ Yuborish', 'adm_mgo'), Markup.button.callback('❌ Bekor qilish', 'adm_mcancel')]])
+  );
+});
+
 bot.catch((err) => console.log('Xato:', err.message));
 
 // ---------- ISHGA TUSHIRISH ----------
@@ -1160,4 +1634,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
