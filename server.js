@@ -839,6 +839,8 @@ bot.on('my_chat_member', async (ctx) => {
     } else if (gone) {
       const c = DB.chats[ctx.chat.id];
       if (c) c.active = false;
+      const g = games[chatGame[ctx.chat.id]];
+      if (g && !g.finished) closeGame(g);
     } else {
       // bot guruhga qo'shildi yoki admin qilindi -> egaga guruh haqida xabar
       const old = ctx.myChatMember.old_chat_member.status;
@@ -978,10 +980,19 @@ const DISASTERS = [
   "Vulqon otildi: osmonni kul qopladi, qattiq sovuq boshlandi"
 ];
 
+// Fisher-Yates: har bir tartib teng ehtimollik bilan chiqadi (sort(() => random - 0.5) tekis emas)
+function shuffle(arr) {
+  const r = arr.slice();
+  for (let i = r.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+}
 function drawer(arr) {
   let pool = [];
   return () => {
-    if (!pool.length) pool = arr.slice().sort(() => Math.random() - 0.5);
+    if (!pool.length) pool = shuffle(arr);
     return pool.pop();
   };
 }
@@ -1058,16 +1069,34 @@ async function edit(chatId, msgId, text, extra) {
 const alive = (g) => g.players.filter((p) => p.alive);
 const findPlayer = (g, id) => g.players.find((p) => p.id === id);
 
+// Taymer ichidagi xato butun botni yiqitmasligi uchun: har qanday xato faqat logga yoziladi
+function later(ms, fn) {
+  const t = setTimeout(() => {
+    Promise.resolve()
+      .then(fn)
+      .catch((e) => console.log('taymer xatosi:', e && e.message));
+  }, ms);
+  if (t && t.unref) t.unref();
+  return t;
+}
+
 function newPhase(g, phase) {
   g.phase = phase;
   g.phaseId++;
   clearTimeout(g.timer);
+  g.deadline = null;
+  liveStopTimers(g);
   return g.phaseId;
 }
 function setTimer(g, sec, fn) {
   const id = g.phaseId;
+  g.phaseSec = sec;
+  g.deadline = Date.now() + sec * 1000;
   g.timer = setTimeout(() => {
-    if (g.phaseId === id && !g.finished) fn(g);
+    if (g.phaseId !== id || g.finished) return;
+    Promise.resolve()
+      .then(() => fn(g))
+      .catch((e) => console.log('taymer xatosi:', e && e.message));
   }, sec * 1000);
 }
 function closeGame(g) {
@@ -1075,6 +1104,167 @@ function closeGame(g) {
   g.phase = 'ended';
   g.phaseId++;
   clearTimeout(g.timer);
+  g.deadline = null;
+  liveRetire(g);
+}
+
+// ---------- JONLI XABAR ----------
+// Har bosqichda guruhda BITTA xabar turadi va o'zi yangilanadi: chat to'lib ketmaydi.
+// Bosqich almashganda eskisi o'chirilib, yangisi chatning pastiga chiqadi (signal ham boradi).
+// Telegram guruhga tahrirlashni cheklaydi (daqiqasiga ~20 ta), shuning uchun yangilashlar siyraklashtiriladi.
+const LIVE_MIN_EDIT_MS = Number(process.env.LIVE_MIN_EDIT_MS || 3500);
+const LIVE_TICK_MS = Number(process.env.LIVE_TICK_MS || 10000);
+
+const fmtLeft = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
+};
+// taymer chizig'i: 10 ta bo'lak, qolgan vaqtga mutanosib
+function barLine(g) {
+  if (!g.deadline) return '';
+  const left = Math.max(0, g.deadline - Date.now());
+  const total = Math.max(1, (g.phaseSec || 1) * 1000);
+  const filled = Math.min(10, Math.max(0, Math.ceil((left / total) * 10)));
+  return `⏳ ${'▓'.repeat(filled)}${'░'.repeat(10 - filled)} ${fmtLeft(left)}`;
+}
+// muhokamani erta tugatish uchun kerakli "tayyorman" soni: tiriklarning yarmidan ko'pi
+const readyNeed = (g) => Math.floor(alive(g).length / 2) + 1;
+const voteCounts = (g) => {
+  const m = new Map();
+  for (const t of g.votes.values()) m.set(t, (m.get(t) || 0) + 1);
+  return m;
+};
+
+function liveRender(g) {
+  if (!g || g.finished || !g.started || !g.disaster) return null;
+  const head = `🛡 <b>BUNKER</b> · xona <code>${g.code}</code>\n☢️ ${esc(g.disaster)}\n🚪 Joy: <b>${g.capacity}</b> · 👥 Tirik: <b>${alive(g).length}</b> · 🔔 Raund <b>${g.round}</b>`;
+  const bar = barLine(g);
+  let body = '';
+  let rows = [];
+  if (g.phase === 'reveal') {
+    const list = alive(g)
+      .map((p) => `${g.roundRevealed && g.roundRevealed.has(p.id) ? '✅' : '⏳'} ${esc(p.name)}`)
+      .join('\n');
+    const done = alive(g).filter((p) => g.roundRevealed && g.roundRevealed.has(p.id)).length;
+    body = `📂 <b>${g.step}-karta ochiladi</b>\nHar kim botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi.\n\n${list}\n\nOchganlar: <b>${done}/${alive(g).length}</b>`;
+    rows = [[Markup.button.url('🪪 Kartamni ochish', `https://t.me/${BOT_USERNAME}`)]];
+  } else if (g.phase === 'discuss') {
+    const first = g.step === 1;
+    const k = g.ready ? g.ready.size : 0;
+    body =
+      `💬 <b>MUHOKAMA · ${g.step}-kartadan keyin</b>\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\n` +
+      `${first ? 'Keyin 2-karta ochiladi.' : 'Keyin ovoz berish boshlanadi.'}\n✅ Tayyor: <b>${k}/${alive(g).length}</b> (tugatish uchun <b>${readyNeed(g)}</b> kishi kerak)`;
+    rows = [
+      [Markup.button.callback(`✅ Tayyorman (${k}/${readyNeed(g)})`, `ready_${g.code}`)],
+      [Markup.button.callback(first ? '⏭ Xona egasi: 2-kartaga o\'tish' : '⏭ Xona egasi: ovozga o\'tish', `skip_${g.code}`)]
+    ];
+  } else if (g.phase === 'vote') {
+    const counts = voteCounts(g);
+    const who = voters(g)
+      .map((p) => `${g.votes.has(p.id) ? '✅' : '⏳'} ${esc(p.name)}`)
+      .join('  ');
+    const title = g.revote
+      ? `🔁 <b>QAYTA OVOZ</b>\nOvozlar teng bo'ldi. Faqat teng chiqqanlar o'rtasida ovoz beriladi.`
+      : `🗳 <b>OVOZ BERISH</b>`;
+    body = `${title}\n\nKimni bunkerdan haydaymiz? Tugmani bosing (o'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin).\n\nOvoz berdi: <b>${g.votes.size}/${voters(g).length}</b>\n${who}`;
+    const list = g.voteCandidates;
+    for (let i = 0; i < list.length; i += 2) {
+      rows.push(list.slice(i, i + 2).map((p) => Markup.button.callback(short(`❌ ${p.name} (${counts.get(p.id) || 0})`, 30), `vote_${g.code}_${p.id}`)));
+    }
+  } else {
+    return null;
+  }
+  const text = `${head}\n\n${body}${bar ? '\n\n' + bar : ''}`;
+  const extra = Object.assign({ parse_mode: 'HTML', disable_web_page_preview: true }, rows.length ? Markup.inlineKeyboard(rows) : {});
+  return { text, extra, sig: text + JSON.stringify(extra.reply_markup || null) };
+}
+
+// jonli xabar ustidagi barcha amallar navbat bilan bajariladi (bir-biriga xalaqit bermaydi)
+function liveEnqueue(g, fn) {
+  g.liveQ = (g.liveQ || Promise.resolve()).then(fn).catch((e) => console.log('jonli xabar xatosi:', e && e.message));
+  return g.liveQ;
+}
+function liveStopTimers(g) {
+  if (g.ticker) clearInterval(g.ticker);
+  g.ticker = null;
+  if (g.liveTimer) clearTimeout(g.liveTimer);
+  g.liveTimer = null;
+}
+// eski jonli xabarni olib tashlash (o'chirib bo'lmasa, tugmalarsiz "tugadi" deb qoldiramiz)
+async function liveDropNow(g) {
+  const id = g.liveMsgId;
+  g.liveMsgId = null;
+  g.liveSig = '';
+  if (!id) return;
+  try {
+    await bot.telegram.deleteMessage(g.chatId, id);
+  } catch (e) {
+    try {
+      await bot.telegram.editMessageText(g.chatId, id, undefined, '✔️ Bosqich tugadi.');
+    } catch (e2) {}
+  }
+}
+async function liveSendNew(g) {
+  const r = liveRender(g);
+  if (!r) return;
+  const m = await say(g.chatId, r.text, r.extra);
+  if (m && m.message_id) {
+    g.liveMsgId = m.message_id;
+    g.liveSig = r.sig;
+    g.liveAt = Date.now();
+  }
+}
+// yangi bosqich: eskisini olib tashlab, yangisini yuboradi va taymer chizig'ini yurgizadi
+function liveOpen(g) {
+  return liveEnqueue(g, async () => {
+    if (g.finished) return;
+    await liveDropNow(g);
+    await liveSendNew(g);
+    if (g.finished || !g.liveMsgId) return;
+    if (g.ticker) clearInterval(g.ticker);
+    g.ticker = setInterval(() => liveRefresh(g), LIVE_TICK_MS);
+    if (g.ticker.unref) g.ticker.unref();
+  });
+}
+function liveRetire(g) {
+  liveStopTimers(g);
+  return liveEnqueue(g, () => liveDropNow(g));
+}
+async function liveEditNow(g) {
+  if (g.finished || !g.liveMsgId) return;
+  const r = liveRender(g);
+  if (!r || r.sig === g.liveSig) return;
+  try {
+    await bot.telegram.editMessageText(g.chatId, g.liveMsgId, undefined, r.text, r.extra);
+    g.liveSig = r.sig;
+    g.liveAt = Date.now();
+  } catch (e) {
+    const resp = e && e.response;
+    const d = (resp && resp.description) || (e && e.message) || '';
+    if (/not modified/i.test(d)) {
+      g.liveSig = r.sig;
+      g.liveAt = Date.now();
+    } else if (resp && resp.error_code === 429) {
+      g.liveAt = Date.now() + (((resp.parameters && resp.parameters.retry_after) || 5) * 1000);
+    } else if (/not found|can't be edited|MESSAGE_ID_INVALID/i.test(d)) {
+      // xabar o'chirib yuborilgan: yangisini chiqaramiz
+      g.liveMsgId = null;
+      await liveSendNew(g);
+    } else {
+      console.log('jonli xabar tahrir xatosi:', d);
+    }
+  }
+}
+// o'zgarish bo'lganda chaqiriladi; tez-tez chaqirilsa ham Telegram'ga kamida LIVE_MIN_EDIT_MS oralig'ida boradi
+function liveRefresh(g) {
+  if (g.finished || !g.liveMsgId) return;
+  const wait = LIVE_MIN_EDIT_MS - (Date.now() - (g.liveAt || 0));
+  if (wait <= 0) return liveEnqueue(g, () => liveEditNow(g));
+  if (g.liveTimer) return;
+  g.liveTimer = later(wait, () => {
+    g.liveTimer = null;
+    return liveEnqueue(g, () => liveEditNow(g));
+  });
 }
 
 function lobbyText(g) {
@@ -1166,6 +1356,7 @@ function revealKeyboard(g, p) {
 }
 
 async function beginGame(g) {
+  if (g.finished) return;
   g.started = true;
   g.disaster = pick(DISASTERS);
   g.capacity = WINNERS;
@@ -1173,6 +1364,7 @@ async function beginGame(g) {
   g.players.forEach((p) => {
     p.card = makeCard(draws);
     p.revealed = [];
+    p.fresh = null;
     p.alive = true;
     p.votesAgainst = 0;
   });
@@ -1185,11 +1377,19 @@ async function beginGame(g) {
   await startRound(g);
 }
 
+// hamma tirik o'yinchining barcha kartasi allaqachon ochiq bo'lsa, ochadigan hech narsa qolmagan
+const nothingToReveal = (g) => alive(g).every((p) => p.revealed.length >= ATTRS.length);
+
 async function startRound(g) {
   if (g.finished) return;
   if (alive(g).length <= g.capacity) return finishGame(g);
   g.round++;
   g.step = 1;
+  // 8 ta xususiyat 4 raundga yetadi; undan keyingi raundlarda ochish bosqichi o'tkazib yuboriladi
+  if (nothingToReveal(g)) {
+    g.step = 2;
+    return startDiscuss(g);
+  }
   await startReveal(g);
 }
 
@@ -1197,19 +1397,19 @@ async function startReveal(g) {
   if (g.finished) return;
   g.roundRevealed = new Set();
   newPhase(g, 'reveal');
-  await say(
-    g.chatId,
-    `🔔 RAUND ${g.round} - ${g.step}-karta ochiladi\n\n📂 Har bir tirik o'yinchi botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi (${REVEAL_SEC} soniya).\n👥 Tirik: ${alive(g).length} | 🚪 Joy: ${g.capacity}`
-  );
+  const need = [];
   for (const p of alive(g)) {
-    if (p.revealed.length >= ATTRS.length) {
-      g.roundRevealed.add(p.id);
-      continue;
-    }
+    p.fresh = null;
+    if (p.revealed.length >= ATTRS.length) g.roundRevealed.add(p.id);
+    else need.push(p);
+  }
+  if (!need.length) return endReveal(g);
+  setTimer(g, REVEAL_SEC, endReveal);
+  await liveOpen(g);
+  for (const p of need) {
+    if (g.finished || g.phase !== 'reveal') break; // vaqt tugab bo'lgan bo'lsa eskirgan karta yubormaymiz
     await say(p.id, cardText(g, p, true), revealKeyboard(g, p));
   }
-  if (alive(g).every((p) => g.roundRevealed.has(p.id))) return endReveal(g);
-  setTimer(g, REVEAL_SEC, endReveal);
 }
 
 // Xususiyat ochish: natija { ok, text }
@@ -1221,10 +1421,11 @@ async function revealAttr(g, userId, key) {
   const a = attrOf(key);
   if (!a || p.revealed.includes(key)) return { ok: false, text: 'Bu xususiyat allaqachon ochilgan.' };
   p.revealed.push(key);
+  p.fresh = key;
   g.roundRevealed.add(p.id);
-  await say(g.chatId, `👤 ${p.name} ochdi:\n${attrLine(p.card, a)}`);
+  liveRefresh(g);
   if (alive(g).every((x) => g.roundRevealed.has(x.id))) {
-    setTimeout(() => endReveal(g), 500);
+    later(500, () => endReveal(g));
   }
   return { ok: true, text: 'Ochildi!' };
 }
@@ -1232,33 +1433,30 @@ async function revealAttr(g, userId, key) {
 async function endReveal(g) {
   if (g.finished || g.phase !== 'reveal') return;
   newPhase(g, 'summary');
+  await liveRetire(g);
   // Vaqtida tanlamaganlar uchun karta o'zi ochilmaydi, shunchaki o'tkazib yuboriladi
   const skipped = alive(g).filter((p) => !g.roundRevealed.has(p.id));
   skipped.forEach((p) => g.roundRevealed.add(p.id));
-  if (skipped.length) {
-    await say(g.chatId, `⏰ Vaqtida karta ochmadi: ${skipped.map((p) => p.name).join(', ')}. Ular bu bosqichda yangi ma'lumot ochmadi.`);
-  }
+  // yangi ochilgani to'liq izoh bilan, avvalgilari qisqa ko'rinadi (xabar uzun bo'lib ketmasligi uchun)
   const summary = alive(g)
     .map((p) => {
-      const open = ATTRS.filter((a) => p.revealed.includes(a.key)).map((a) => `   ${attrLine(p.card, a)}`).join('\n');
+      const open = ATTRS.filter((a) => p.revealed.includes(a.key))
+        .map((a) => (p.fresh === a.key ? `   ${attrLine(p.card, a)} 🆕` : `   ${a.icon} ${a.label}: ${splitHint(p.card[a.key]).main}`))
+        .join('\n');
       return `👤 ${p.name}\n${open || '   (hali hech narsa ochmagan)'}`;
     })
     .join('\n\n');
-  await say(g.chatId, `📋 RAUND ${g.round} (${g.step}-karta) HOLATI\n\n${summary}\n\n🚪 Bunkerda joy: ${g.capacity} | 👥 Tirik: ${alive(g).length}`);
+  const skipLine = skipped.length ? `\n\n⏰ Vaqtida karta ochmadi: ${skipped.map((p) => p.name).join(', ')}. Ular bu bosqichda yangi ma'lumot ochmadi.` : '';
+  await say(g.chatId, `📋 RAUND ${g.round} (${g.step}-karta) HOLATI\n\n${summary}${skipLine}\n\n🚪 Bunkerda joy: ${g.capacity} | 👥 Tirik: ${alive(g).length}`);
   await startDiscuss(g);
 }
 
 async function startDiscuss(g) {
   if (g.finished) return;
   newPhase(g, 'discuss');
-  const first = g.step === 1;
-  const sec = first ? DISCUSS1_SEC : DISCUSS2_SEC;
-  await say(
-    g.chatId,
-    `💬 MUHOKAMA - ${g.step}-kartadan keyin (${sec} soniya)\n\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\n${first ? 'Keyin 2-karta ochiladi.' : 'Keyin ovoz berish boshlanadi.'} Xona egasi muhokamani tezroq tugatishi mumkin.`,
-    Markup.inlineKeyboard([[Markup.button.callback(first ? '⏭ 2-kartaga o\'tish' : '⏭ Ovoz berishga o\'tish', `skip_${g.code}`)]])
-  );
-  setTimer(g, sec, afterDiscuss);
+  g.ready = new Set();
+  setTimer(g, g.step === 1 ? DISCUSS1_SEC : DISCUSS2_SEC, afterDiscuss);
+  await liveOpen(g);
 }
 
 // Muhokamadan keyin: 1-karta bo'lsa 2-kartaga, 2-karta bo'lsa ovoz berishga
@@ -1266,6 +1464,7 @@ async function afterDiscuss(g) {
   if (g.finished || g.phase !== 'discuss') return;
   if (g.step === 1) {
     g.step = 2;
+    if (nothingToReveal(g)) return startVote(g);
     return startReveal(g);
   }
   return startVote(g);
@@ -1283,22 +1482,8 @@ async function startVote(g, tied) {
   g.votes = new Map();
   g.revote = !!tied;
   g.voteCandidates = tied || alive(g);
-  const list = g.voteCandidates;
-  const rows = [];
-  for (let i = 0; i < list.length; i += 2) {
-    rows.push(list.slice(i, i + 2).map((p) => Markup.button.callback(`❌ ${p.name}`, `vote_${g.code}_${p.id}`)));
-  }
-  g.voteKeyboard = Markup.inlineKeyboard(rows);
-  const msg = await say(g.chatId, voteText(g), g.voteKeyboard);
-  g.voteMsgId = msg ? msg.message_id : null;
   setTimer(g, tied ? REVOTE_SEC : VOTE_SEC, endVote);
-}
-function voteText(g) {
-  const sec = g.revote ? REVOTE_SEC : VOTE_SEC;
-  const head = g.revote
-    ? `🔁 QAYTA OVOZ (${sec} soniya)\n\nOvozlar teng bo'ldi. Faqat teng chiqqanlar o'rtasida ovoz beriladi.`
-    : `🗳 OVOZ BERISH (${sec} soniya)`;
-  return `${head}\n\nKimni bunkerdan haydaymiz? Tugmani bosing (o'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin).\n\nOvoz berganlar: ${g.votes.size}/${voters(g).length}`;
+  await liveOpen(g);
 }
 
 // Ovoz berish: natija { ok, text }
@@ -1312,14 +1497,15 @@ async function castVote(g, voterId, targetId) {
   }
   if (voterId === targetId) return { ok: false, text: 'O\'zingizga ovoz bera olmaysiz.' };
   g.votes.set(voterId, targetId);
-  if (g.voteMsgId) await edit(g.chatId, g.voteMsgId, voteText(g), g.voteKeyboard);
-  if (g.votes.size >= voters(g).length) setTimeout(() => endVote(g), 500);
+  liveRefresh(g);
+  if (g.votes.size >= voters(g).length) later(500, () => endVote(g));
   return { ok: true, text: `Ovoz qabul qilindi: ${target.name}` };
 }
 
 async function endVote(g) {
   if (g.finished || g.phase !== 'vote') return;
   newPhase(g, 'counting');
+  await liveRetire(g);
   const tally = new Map();
   for (const t of g.votes.values()) tally.set(t, (tally.get(t) || 0) + 1);
   const wasRevote = g.revote;
@@ -1353,10 +1539,12 @@ async function endVote(g) {
     const maxAgainst = Math.max(...candidates.map((p) => p.votesAgainst || 0));
     const worst = candidates.filter((p) => (p.votesAgainst || 0) === maxAgainst);
     out = pick(worst);
-    note =
-      worst.length === 1
-        ? 'Qayta ovozda ham teng bo\'ldi. O\'yin davomida ko\'proq ovoz olgani haydaldi.'
-        : 'Hamma ko\'rsatkich teng bo\'ldi, tasodif bilan tanlandi.';
+    if (tally.size === 0) note = 'Hech kim ovoz bermadi, shuning uchun tasodif bilan tanlandi.';
+    else
+      note =
+        worst.length === 1
+          ? 'Qayta ovozda ham teng bo\'ldi. O\'yin davomida ko\'proq ovoz olgani haydaldi.'
+          : 'Hamma ko\'rsatkich teng bo\'ldi, tasodif bilan tanlandi.';
   }
 
   const base = wasRevote && g.firstTally ? g.firstTally : tally;
@@ -1369,16 +1557,15 @@ async function endVote(g) {
   g.eliminated.push(out);
 
   const fullCard = ATTRS.map((a) => attrLine(out.card, a)).join('\n');
+  const last = alive(g).length <= g.capacity;
   await say(
     g.chatId,
-    `📊 OVOZ NATIJASI\n\n${results}\n${note ? '\n' + note + '\n' : ''}\n☠️ BUNKERDAN HAYDALDI: ${out.name}\n\n🪪 Uning to'liq kartasi:\n${fullCard}`
+    `📊 OVOZ NATIJASI\n\n${results}\n${note ? '\n' + note + '\n' : ''}\n☠️ BUNKERDAN HAYDALDI: ${out.name}\n\n🪪 Uning to'liq kartasi:\n${fullCard}` +
+      (last ? '' : `\n\n⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`)
   );
   await say(out.id, '☠️ Siz bunkerdan haydaldingiz. Guruhda o\'yinni kuzatishda davom eting.');
 
-  if (alive(g).length <= g.capacity) {
-    return finishGame(g);
-  }
-  await say(g.chatId, `⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`);
+  if (last) return finishGame(g);
   setTimer(g, BETWEEN_SEC, startRound);
 }
 
@@ -1448,7 +1635,10 @@ Har raund shunday o'tadi:
 4️⃣ Muhokama (${DISCUSS2_SEC} soniya)
 5️⃣ Ovoz berish (${VOTE_SEC} soniya), bitta o'yinchi haydaladi
 
-⏰ Vaqtida karta ochmasangiz, o'tkazib yuboriladi va boshqalar sizdan gumon qiladi.`,
+⏰ Vaqtida karta ochmasangiz, o'tkazib yuboriladi va boshqalar sizdan gumon qiladi.
+
+⚡ Hamma karta ochsa yoki hamma ovoz bersa, vaqt kutilmaydi.
+♾ 8 ta xususiyat 4 raundga yetadi. Hamma kartasi ochilgach, raundlar faqat muhokama va ovozdan iborat bo'ladi.`,
 
 `📖 QOIDALAR 5/6 - MUHOKAMA
 
@@ -1458,6 +1648,7 @@ Bu o'yinning eng qiziq qismi. Ovozli chatda gaplashing:
 • Boshqalarning kamchiligini aytib, ularni gumon ostiga oling
 • Yolg'on gapirish mumkin! Lekin ochilgan kartangiz bilan qarama-qarshi bo'lmasin
 • Falokatga qarab fikr yuriting: kasallik tarqalsa shifokor kerak, urushda askar
+• Gapingiz tugasa "✅ Tayyorman" tugmasini bosing: tiriklarning yarmidan ko'pi bossa, muhokama tugaydi
 
 Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. Sen ortiqchasan."`,
 
@@ -1510,24 +1701,46 @@ bot.command('bunker', async (ctx) => {
   if (ensureSettings().maintenance && !isAdmin(ctx)) {
     return ctx.reply('🛠 Bot hozir texnik ishlar uchun vaqtincha yopiq. Birozdan keyin qayta urinib ko\'ring.');
   }
+  const old = games[chatGame[ctx.chat.id]];
+  if (old && !old.finished) {
+    // davom etayotgan o'yinni tasodifan o'chirib yubormaslik uchun yangi xona ochilmaydi
+    if (old.started) {
+      return ctx.reply(`⚠️ Bu guruhda o'yin davom etmoqda (xona ${old.code}). To'xtatish uchun xona egasi yoki guruh admini /stop yozadi.`);
+    }
+    // xona ochiq turibdi: uni chatning pastiga qayta chiqaramiz
+    const m = await ctx.reply(lobbyText(old), lobbyKeyboard(old));
+    const prev = old.msgId;
+    old.msgId = m.message_id;
+    if (prev) {
+      try {
+        await ctx.telegram.deleteMessage(ctx.chat.id, prev);
+      } catch (e) {}
+    }
+    return;
+  }
   const g = createRoom(ctx.chat.id, ctx.from.id);
   g.chatUsername = ctx.chat.username || null;
   const msg = await ctx.reply(lobbyText(g), lobbyKeyboard(g));
   g.msgId = msg.message_id;
 });
 
+// xona egasi yoki guruh adminimi?
+async function canManage(ctx, g) {
+  if (ctx.from.id === g.hostId) return true;
+  try {
+    const m = await ctx.telegram.getChatMember(g.chatId, ctx.from.id);
+    return ['creator', 'administrator'].includes(m.status);
+  } catch (e) {
+    return false;
+  }
+}
+
 bot.command('stop', async (ctx) => {
   if (ctx.chat.type === 'private') return;
   const g = games[chatGame[ctx.chat.id]];
   if (!g || g.finished) return ctx.reply('Ochiq o\'yin yo\'q.');
-  let allowed = ctx.from.id === g.hostId;
-  if (!allowed) {
-    try {
-      const m = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-      allowed = ['creator', 'administrator'].includes(m.status);
-    } catch (e) {}
-  }
-  if (!allowed) return ctx.reply('Faqat xona egasi yoki guruh adminlari to\'xtata oladi.');
+  if (!(await canManage(ctx, g))) return ctx.reply('Faqat xona egasi yoki guruh adminlari to\'xtata oladi.');
+  if (g.finished) return;
   closeGame(g);
   ctx.reply('🛑 O\'yin to\'xtatildi. Yangi o\'yin uchun /bunker yozing.');
 });
@@ -1554,12 +1767,15 @@ bot.start(async (ctx) => {
 bot.action(/^start_([A-Z0-9]+)$/, async (ctx) => {
   const g = games[ctx.match[1]];
   if (!g || g.started || g.finished) return ctx.answerCbQuery('O\'yin boshlangan yoki yopilgan.');
-  if (ctx.from.id !== g.hostId) {
-    return ctx.answerCbQuery('Faqat xona egasi boshlaydi.', { show_alert: true });
+  if (!(await canManage(ctx, g))) {
+    return ctx.answerCbQuery('Faqat xona egasi yoki guruh adminlari boshlaydi.', { show_alert: true });
   }
+  // yuqoridagi tekshiruvda kutish bo'lgani uchun holatni qayta tekshiramiz (ikki marta bosilsa, o'yin ikki marta boshlanmasin)
+  if (g.started || g.finished) return ctx.answerCbQuery('O\'yin boshlangan yoki yopilgan.');
   if (g.players.length < MIN_PLAYERS) {
     return ctx.answerCbQuery(`Kamida ${MIN_PLAYERS} o'yinchi kerak.`, { show_alert: true });
   }
+  g.started = true;
   await ctx.answerCbQuery();
   await beginGame(g);
 });
@@ -1578,11 +1794,26 @@ bot.action(/^rev_([A-Z0-9]+)_(\w+)$/, async (ctx) => {
 bot.action(/^skip_([A-Z0-9]+)$/, async (ctx) => {
   const g = games[ctx.match[1]];
   if (!g || g.finished || g.phase !== 'discuss') return ctx.answerCbQuery('Muhokama tugagan.');
-  if (ctx.from.id !== g.hostId) {
-    return ctx.answerCbQuery('Faqat xona egasi o\'tkaza oladi.', { show_alert: true });
+  if (!(await canManage(ctx, g))) {
+    return ctx.answerCbQuery('Faqat xona egasi yoki guruh adminlari o\'tkaza oladi.', { show_alert: true });
   }
   await ctx.answerCbQuery();
   await afterDiscuss(g);
+});
+
+// "Tayyorman": tiriklarning yarmidan ko'pi bossa, muhokama tugaydi
+bot.action(/^ready_([A-Z0-9]+)$/, async (ctx) => {
+  const g = games[ctx.match[1]];
+  if (!g || g.finished || g.phase !== 'discuss') return ctx.answerCbQuery('Muhokama tugagan.');
+  const p = findPlayer(g, ctx.from.id);
+  if (!p || !p.alive) return ctx.answerCbQuery('Faqat tirik o\'yinchilar bosa oladi.', { show_alert: true });
+  const on = !g.ready.has(p.id);
+  if (on) g.ready.add(p.id);
+  else g.ready.delete(p.id);
+  await ctx.answerCbQuery(on ? 'Siz tayyorsiz ✅' : 'Tayyorlik bekor qilindi');
+  if (g.finished || g.phase !== 'discuss') return;
+  if (g.ready.size >= readyNeed(g)) return afterDiscuss(g);
+  liveRefresh(g);
 });
 
 bot.action(/^vote_([A-Z0-9]+)_(\d+)$/, async (ctx) => {
@@ -1616,6 +1847,8 @@ if (require.main === module) {
     .catch((e) => console.log('loadDB xatosi:', e.message))
     .then(() => bot.launch({ dropPendingUpdates: true }))
     .catch((e) => console.log('launch xatosi:', e.message));
+  // kutilmagan xato butun botni (va barcha o'yinlarni) to'xtatib qo'ymasligi uchun
+  process.on('unhandledRejection', (e) => console.log('Ushlanmagan xato:', e && e.message));
   process.once('SIGINT', () => {
     saveNow();
     bot.stop('SIGINT');
@@ -1629,9 +1862,12 @@ if (require.main === module) {
   setInterval(() => {
     const now = Date.now();
     for (const code of Object.keys(games)) {
-      if (games[code].finished && now - games[code].createdAt > 3600 * 1000) delete games[code];
+      const g = games[code];
+      // tashlab ketilgan xonalar (3 soat) va juda uzoq cho'zilgan o'yinlar (6 soat) yopiladi
+      if (!g.finished && now - g.createdAt > (g.started ? 6 : 3) * 3600 * 1000) closeGame(g);
+      if (g.finished && now - g.createdAt > 3600 * 1000) delete games[code];
     }
   }, 600 * 1000);
 }
 
-module.exports = { _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };

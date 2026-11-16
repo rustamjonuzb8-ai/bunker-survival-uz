@@ -22,16 +22,25 @@ const Markup = {
   }
 };
 
-const world = { chats: {}, sent: [], left: [], linkSeq: 0, blocked: new Set() };
+const world = { chats: {}, sent: [], left: [], edits: [], deleted: [], msgSeq: 100, linkSeq: 0, blocked: new Set(), editFail: null, deleteFail: false };
 const apiError = (code, msg) => Object.assign(new Error(msg), { response: { error_code: code, description: msg } });
 
 const telegram = {
   async sendMessage(id, text, extra) {
     if (world.blocked.has(id)) throw apiError(403, 'Forbidden: bot was blocked by the user');
-    world.sent.push({ id, text, extra });
-    return { message_id: 1 };
+    const mid = ++world.msgSeq;
+    world.sent.push({ id, text, extra, mid });
+    return { message_id: mid };
   },
-  async editMessageText() {},
+  async editMessageText(chatId, msgId, inline, text, extra) {
+    world.edits.push({ chatId, msgId, text, extra });
+    if (world.editFail) throw world.editFail;
+  },
+  async deleteMessage(chatId, msgId) {
+    world.deleted.push({ chatId, msgId });
+    if (world.deleteFail) throw apiError(400, "Bad Request: message can't be deleted");
+    return true;
+  },
   async getMe() {
     return { id: 999, username: 'Bunkeruz1_bot' };
   },
@@ -117,7 +126,7 @@ class FakeTelegraf {
     }
     ctx.reply = async (text, extra) => {
       ctx.replies.push({ text, extra });
-      return { message_id: 1 };
+      return { message_id: ++world.msgSeq };
     };
     ctx.editMessageText = async (text, extra) => {
       ctx.edits.push({ text, extra });
@@ -218,6 +227,10 @@ function reset() {
   world.chats = {};
   world.sent.length = 0;
   world.left.length = 0;
+  world.edits.length = 0;
+  world.deleted.length = 0;
+  world.editFail = null;
+  world.deleteFail = false;
   world.linkSeq = 0;
   world.blocked = new Set();
 }
