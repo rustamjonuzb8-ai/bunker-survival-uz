@@ -2133,17 +2133,34 @@ if (require.main === module) {
   app.get('/', (req, res) => res.send('BUNKER bot ishlayapti'));
   app.listen(process.env.PORT || 3000);
 
+  // Telegram bilan aloqa uzilsa (masalan ECONNRESET), bot o'chib qolmasligi uchun qayta urinadi
+  let stopping = false;
+  async function launchWithRetry() {
+    for (let attempt = 1; !stopping; attempt++) {
+      try {
+        await bot.launch({ dropPendingUpdates: true });
+        return;
+      } catch (e) {
+        if (stopping) return;
+        const wait = Math.min(30000, 3000 * attempt);
+        console.log(`launch xatosi (${attempt}-urinish):`, e.message, `— ${wait / 1000} soniyadan keyin qayta uriniladi`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  }
+
   loadDB()
     .catch((e) => console.log('loadDB xatosi:', e.message))
-    .then(() => bot.launch({ dropPendingUpdates: true }))
-    .catch((e) => console.log('launch xatosi:', e.message));
+    .then(() => launchWithRetry());
   // kutilmagan xato butun botni (va barcha o'yinlarni) to'xtatib qo'ymasligi uchun
   process.on('unhandledRejection', (e) => console.log('Ushlanmagan xato:', e && e.message));
   process.once('SIGINT', () => {
+    stopping = true;
     saveNow();
     bot.stop('SIGINT');
   });
   process.once('SIGTERM', () => {
+    stopping = true;
     saveNow();
     bot.stop('SIGTERM');
   });
