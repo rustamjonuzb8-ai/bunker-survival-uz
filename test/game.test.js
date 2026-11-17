@@ -294,7 +294,7 @@ test('ovoz berilgach vaqt kutilmaydi; haydalganda jonli xabar olib tashlanadi', 
 // ---------- oxirgi raundlar ----------
 test('hamma karta ochilgach ochish bosqichi o\'tkazib yuboriladi (vaqt tejaladi)', async () => {
   const { g } = await startGame(4);
-  const keys = ['job', 'age', 'sex', 'health', 'trait', 'hobby', 'baggage', 'secret'];
+  const keys = G.ATTRS.map((x) => x.key); // barcha xususiyatlar (imkoniyat ham)
   g.players.forEach((p) => (p.revealed = keys.slice()));
   assert.equal(G.nothingToReveal(g), true);
   await advance(60000); // 1-raundning ochish bosqichini tugatamiz
@@ -458,7 +458,7 @@ test('kartalar: bir o\'yinda takrorlanmaydi (12 o\'yinchigacha)', async () => {
   await H.click(xs.host, 'start_' + xs.g.code, group());
   await H.flush();
   assert.equal(xs.g.players.length, 12);
-  for (const key of ['job', 'health', 'trait', 'hobby', 'baggage', 'secret']) {
+  for (const key of ['job', 'age', 'health', 'trait', 'hobby', 'baggage', 'secret', 'power']) {
     const vals = xs.g.players.map((p) => p.card[key]);
     assert.equal(new Set(vals).size, vals.length, key + ' takrorlandi');
   }

@@ -964,116 +964,8 @@ bot.on('my_chat_member', async (ctx) => {
 
 
 // ---------- MA'LUMOTLAR ----------
-const JOBS = [
-  "Shifokor (operatsiya qila oladi, kasallarni davolaydi)",
-  "Oshpaz (oz mahsulotdan ham to'yimli ovqat qiladi)",
-  "Dehqon (ekin ekadi, hosil yetishtiradi)",
-  "Elektrchi (chiroq va generatorni ishlatadi)",
-  "Hamshira (yarani bog'laydi, dori beradi)",
-  "Sobiq askar (o'zini himoya qiladi, jasur)",
-  "O'qituvchi (ko'p narsa biladi, bolalarga dars beradi)",
-  "Dasturchi (kompyuterni yaxshi biladi, lekin bunkerda internet yo'q)",
-  "Blogger (obunachisi ko'p, lekin ish qo'lidan kelmaydi)",
-  "Ruhshunos (odamlarni tinchlantiradi, janjalni bosadi)",
-  "Quruvchi (devor va tomni tuzatadi)",
-  "Veterinar (hayvonlarni davolaydi, mol-qo'y boqishni biladi)",
-  "Suv ustasi (quvur va suvni tuzatadi)",
-  "Avtomexanik (har qanday mashinani tuzatadi)",
-  "Aktyor (hammani kuldiradi, lekin amaliy foydasi kam)",
-  "Deputat (gapga usta, ishga usta emas)",
-  "Dorixonachi (dorilarni va ularning zararini biladi)",
-  "Militsioner (tartib saqlaydi, baquvvat)",
-  "Sartarosh (hamma bilan til topishadi, foydasi kam)",
-  "O'simlik bilimdoni (qaysi o'simlik yeyiladi, qaysi biri zaharli ekanini biladi)"
-];
-const HEALTH = [
-  "Yong'oqdan zaharlanadi (bir dona yong'oq yesa ham og'ir ahvolga tushadi)",
-  "Changdan nafasi qisadi (doim yo'talib, aksirib yuradi)",
-  "Ba'zi dorilar unga to'g'ri kelmaydi (ichsa, tanasi shishib, nafasi qisadi)",
-  "Non yeya olmaydi (non va xamir ovqatdan qattiq kasal bo'ladi)",
-  "Nafas yo'li kasalligi (maxsus nafas dorisi kerak, u 2 oyga yetadi)",
-  "Qand kasalligi (har kuni ukol kerak, zaxirasi 1 oyga yetadi)",
-  "Yuragi zaif (og'ir ish qila olmaydi)",
-  "Ko'zi ko'rmaydi (faqat eshitib va paypaslab yuradi)",
-  "Yaxshi eshitmaydi (xavf haqida ogohlantirishni eshitmay qolishi mumkin)",
-  "Bir oyog'i sun'iy (tez yura olmaydi, lekin ishlay oladi)",
-  "Tutqanoq kasalligi (qattiq qo'rqsa, hushidan ketib yiqiladi)",
-  "Berk joydan qo'rqadi (tor joyda vahimaga tushadi, bunker unga og'ir)",
-  "Beli doim og'riydi (og'ir yuk ko'tara olmaydi)",
-  "Uyqusizlik (uxlamasa jahli chiqib, xato qiladi)",
-  "Qon bosimi baland (har kuni dori ichishi kerak)",
-  "Jigari kasal (oddiy ovqat yeya olmaydi, maxsus ovqat kerak)",
-  "Juda baquvvat va sog'lom",
-  "Temirdek sog'lom (yillar davomida shamollamagan)"
-];
-const TRAITS = [
-  "Sabrli (janjalni bosadi, lekin ishni sekin qiladi)",
-  "Jizzaki (tez achchiqlanadi, janjal chiqaradi)",
-  "Yo'lboshchi (odamlarni boshqaradi, qaror qiladi)",
-  "Qo'rqoq (xavfda vahimaga tushadi)",
-  "Aqlli (qiyin paytda yo'l topadi, lekin o'zini katta oladi)",
-  "Yolg'onchi (ishonarli gapiradi, lekin aldaydi)",
-  "Mehribon (hammaga yordam beradi, o'zini o'ylamaydi)",
-  "Xudbin (faqat o'zini o'ylaydi)",
-  "Jasur (xavfda oldinga chiqadi, ba'zan o'ylamay)",
-  "Ochko'z (ovqatni yashirincha ko'proq yeydi)",
-  "Hazilkash (kayfiyatni ko'taradi, lekin jiddiy paytda ham hazillashadi)",
-  "Tartibli (hamma narsani hisoblaydi, tartibni buzganni yoqtirmaydi)",
-  "Dangasa (ishdan qochadi, lekin gapga chechan)",
-  "Tez ranjiydi (kichik gapdan ham xafa bo'lib, jamoani buzadi)"
-];
-const HOBBIES = [
-  "Baliq ovlash (baliq tutadi, suv topadi)",
-  "Shaxmat (bir necha qadam oldinni o'ylaydi)",
-  "Gitara chalish (ko'ngil ochadi, lekin ovqat bermaydi)",
-  "Bog' qilish (kichik joyda ham ekin ekadi)",
-  "Kitob o'qish (ko'p biladi, lekin amalda kam ishlaydi)",
-  "Og'ir tosh ko'tarish (juda kuchli)",
-  "Rasm chizish (chiroyli, lekin foydasi kam)",
-  "Ovqat pishirish (konservadan ham mazali taom qiladi)",
-  "Ov qilish (hayvon izini biladi, o'rmonda adashmaydi)",
-  "Tikuvchilik (kiyim va ko'rpani tikadi)",
-  "Radio yasash (aloqa uskunasini yig'adi, tashqi dunyo bilan bog'laydi)",
-  "Tog'ga chiqish (chidamli, qiyinchilikka ko'nikkan)",
-  "Kompyuter o'yini (soatlab o'tira oladi, lekin hayotda sust)",
-  "Mashina tuzatish (mayda uskunalarni tuzata oladi)"
-];
-const BAGGAGE = [
-  "Konserva (3 oyga yetadi)",
-  "Dori sumkasi (og'riq dorisi, bint, yod)",
-  "Quyosh batareyasi (oz miqdorda elektr beradi)",
-  "Qo'lda aylantiriladigan generator (chiroq va radio uchun)",
-  "Suv tozalagich (1 yilga yetadi)",
-  "Sabzavot urug'i (ekilsa 4 oyda hosil beradi)",
-  "Kitoblar qutisi (tabobat va dehqonchilik haqida)",
-  "Ko'rpa-to'shak va issiq kiyim (hamma uchun yetadi)",
-  "Aloqa radiosi (boshqa bunkerlar bilan gaplashadi)",
-  "Oilaviy rasmlar albomi (foydasiz, lekin yoqimli)",
-  "Bo'sh chamadon (ichida hech narsa yo'q)",
-  "Asboblar qutisi (bolg'a, arra, mix)",
-  "Gugurt va chaqmoq (olov yoqishga yetadi)",
-  "Eski xarita va kompas (tashqarida yo'l topishga yordam beradi)",
-  "Xo'roz va 3 ta tovuq (tuxum va go'sht beradi)",
-  "Katta chodir (qo'shimcha joy beradi)",
-  "Gitara va nay (ko'ngil ochadi, lekin joy oladi)"
-];
-const SECRETS = [
-  "Diplomi soxta (aslida kasbini yaxshi bilmaydi)",
-  "Oldin o'g'rilik qilib qamalgan",
-  "Farzand ko'rolmaydi (shuning uchun oilasi buzilgan)",
-  "Yashirincha og'ir kasal (bir yilga ham yetmaydi, hech kimga aytmagan)",
-  "Yashirincha boshqalarni kuzatib, sirlarini yig'ib yurgan",
-  "Katta qarzga botgan (qarz egalari uni qidirmoqda)",
-  "Ovqatni yashirincha o'zi uchun yig'ib qo'ygan",
-  "Aslida ismi boshqa (haqiqiy ismini yashirgan)",
-  "Sobiq eri yoki xotini uni qidirmoqda",
-  "Aslida qo'rqoq, lekin hammaga o'zini jasur deydi",
-  "Ishni boshqalarga qildirib, o'zi ishlagan bo'lib ko'rsatgan",
-  "Hayvondan qattiq qo'rqadi (mol-qo'y bilan ishlay olmaydi)",
-  "Yolg'on gapirmasdan turolmaydi",
-  "Yashirin xizmatda ishlagan (ko'p sir biladi, lekin hammaga xavfli)",
-  "Boshqa odamning hujjati bilan yashaydi"
-];
+// Kartalar cards.js da: har kategoriyada 30 tadan variant (30 o'yinchigacha takrorlanmaydi)
+const { JOBS, HEALTH, TRAITS, HOBBIES, BAGGAGE, SECRETS, AGES, POWERS, POWER_MECH } = require('./cards');
 const OUT_IMAGES = 3; // assets/out_0..out_2
 const DISASTERS = [
   "Yadro urushi: tashqarida zaharli nur, 5 yil yashash kerak",
@@ -1103,11 +995,14 @@ function drawer(arr) {
 function makeDraws() {
   return {
     job: drawer(JOBS), health: drawer(HEALTH), trait: drawer(TRAITS),
-    hobby: drawer(HOBBIES), baggage: drawer(BAGGAGE), secret: drawer(SECRETS)
+    hobby: drawer(HOBBIES), baggage: drawer(BAGGAGE), secret: drawer(SECRETS),
+    age: drawer(AGES), power: drawer(POWERS)
   };
 }
 
-const POOL_MIN = Math.min(JOBS.length, HEALTH.length, TRAITS.length, HOBBIES.length, BAGGAGE.length, SECRETS.length);
+const POOL_MIN = Math.min(JOBS.length, HEALTH.length, TRAITS.length, HOBBIES.length, BAGGAGE.length, SECRETS.length, AGES.length, POWERS.length);
+// almashtirish (swap) mumkin bo'lgan kartalar va ularning ro'yxatlari
+const POOLS = { job: JOBS, health: HEALTH, trait: TRAITS, hobby: HOBBIES, baggage: BAGGAGE, secret: SECRETS };
 
 const ATTRS = [
   { key: 'job', icon: '👷', label: 'Kasb' },
@@ -1117,7 +1012,8 @@ const ATTRS = [
   { key: 'trait', icon: '🧠', label: 'Xarakter' },
   { key: 'hobby', icon: '🎯', label: 'Hobbi' },
   { key: 'baggage', icon: '🧳', label: 'Bagaj' },
-  { key: 'secret', icon: '🤫', label: 'Sir' }
+  { key: 'secret', icon: '🤫', label: 'Sir' },
+  { key: 'power', icon: '⚡', label: 'Imkoniyat' }
 ];
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -1127,18 +1023,20 @@ const attrLine = (card, a) => `${a.icon} ${a.label}: ${card[a.key]}`;
 
 function makeCard(draws) {
   const d = draws || makeDraws();
-  const age = 18 + Math.floor(Math.random() * 50);
+  const age = d.age();
+  const ageNum = parseInt(age, 10);
   const female = Math.random() < 0.5;
-  const sex = female ? (age < 30 ? 'Qiz' : 'Ayol') : 'Erkak';
+  const sex = female ? (ageNum < 30 ? 'Qiz' : 'Ayol') : 'Erkak';
   return {
     job: d.job(),
-    age: `${age} yosh`,
+    age,
     sex,
     health: d.health(),
     trait: d.trait(),
     hobby: d.hobby(),
     baggage: d.baggage(),
-    secret: d.secret()
+    secret: d.secret(),
+    power: d.power()
   };
 }
 
@@ -1294,6 +1192,7 @@ function liveRender(g) {
       `${first ? 'Keyin 2-karta ochiladi.' : 'Keyin ovoz berish boshlanadi.'}\n✅ Tayyor: <b>${k}/${alive(g).length}</b> (tugatish uchun <b>${readyNeed(g)}</b> kishi kerak)`;
     rows = [
       [Markup.button.callback(`✅ Tayyorman (${k}/${readyNeed(g)})`, `ready_${g.code}`)],
+      [Markup.button.callback('⚡ Imkoniyatim', `pw_${g.code}`)],
       [Markup.button.callback(first ? '⏭ Xona egasi: 2-kartaga o\'tish' : '⏭ Xona egasi: ovozga o\'tish', `skip_${g.code}`)]
     ];
   } else if (g.phase === 'vote') {
@@ -1309,6 +1208,7 @@ function liveRender(g) {
     for (let i = 0; i < list.length; i += 2) {
       rows.push(list.slice(i, i + 2).map((p) => Markup.button.callback(short(`❌ ${p.name} (${counts.get(p.id) || 0})`, 30), `vote_${g.code}_${p.id}`)));
     }
+    rows.push([Markup.button.callback('⚡ Imkoniyatim', `pw_${g.code}`)]);
   } else {
     return null;
   }
@@ -1506,7 +1406,9 @@ async function beginGame(g) {
     p.fresh = null;
     p.alive = true;
     p.votesAgainst = 0;
+    p.pw = { mech: POWER_MECH.get(p.card.power), used: false };
   });
+  g.fx = newFx();
   recordGameStart(g);
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
   await sayPhoto(
@@ -1525,6 +1427,7 @@ async function startRound(g) {
   if (alive(g).length <= g.capacity) return finishGame(g);
   g.round++;
   g.step = 1;
+  g.fx = newFx();
   // 8 ta xususiyat 4 raundga yetadi; undan keyingi raundlarda ochish bosqichi o'tkazib yuboriladi
   if (nothingToReveal(g)) {
     g.step = 2;
@@ -1679,6 +1582,106 @@ async function startVote(g, tied) {
   await liveOpen(g);
 }
 
+// ---------- MAXSUS IMKONIYAT ----------
+// Har o'yinchi o'z imkoniyatini O'YIN DAVOMIDA FAQAT BIR MARTA ishlatadi. Qoidalar:
+//  - faqat tirik o'yinchi, faqat o'z vaqtida (ovozga ta'sir qiluvchilar faqat ovoz berish bosqichida)
+//  - o'ziga qarshi yoki o'ziga tegishli nishon bo'lmaydi (veto, mark, peek, force: faqat boshqa tirik o'yinchi)
+//  - ishlatish bir lahzada belgilanadi (ikki marta bosilsa, ikkinchisi rad etiladi)
+//  - ovoz hisobi ochiq formula: har ovoz 1 ta; dbl egasining ovozi 2 ta; veto qilinganning ovozi 0; mark nishonga +1
+//  - ovoz natijasida hamma ishlatilgan imkoniyatlar ochiq e'lon qilinadi (yashirin manipulyatsiya yo'q)
+const newFx = () => ({ dbl: new Set(), shield: new Set(), veto: new Set(), mark: [], log: [] });
+const VOTE_PHASE = ['vote'];
+const ANY_PHASE = ['discuss', 'vote'];
+const POWER_INFO = {
+  dbl: { phases: VOTE_PHASE, target: null, when: 'ovoz berish paytida' },
+  shield: { phases: VOTE_PHASE, target: null, when: 'ovoz berish paytida' },
+  veto: { phases: VOTE_PHASE, target: 'player', when: 'ovoz berish paytida' },
+  mark: { phases: VOTE_PHASE, target: 'player', when: 'ovoz berish paytida' },
+  peek: { phases: ANY_PHASE, target: 'player', when: 'muhokama yoki ovoz berish paytida' },
+  peekSecret: { phases: ANY_PHASE, target: 'player', when: 'muhokama yoki ovoz berish paytida' },
+  force: { phases: ANY_PHASE, target: 'player', when: 'muhokama yoki ovoz berish paytida' },
+  swap: { phases: ANY_PHASE, target: 'attr', when: 'muhokama yoki ovoz berish paytida' }
+};
+
+// Tortilgan ovozlar: 1 ta ovoz = 1; dbl = 2; veto qilinganniki = 0; mark = nishonga +1
+function weightedTally(g) {
+  const m = new Map();
+  for (const [voter, target] of g.votes) {
+    if (g.fx.veto.has(voter)) continue;
+    m.set(target, (m.get(target) || 0) + (g.fx.dbl.has(voter) ? 2 : 1));
+  }
+  for (const t of g.fx.mark) {
+    if (g.voteCandidates && g.voteCandidates.some((c) => c.id === t)) m.set(t, (m.get(t) || 0) + 1);
+  }
+  return m;
+}
+
+// Raund natijasida ishlatilgan ta'sirlar ro'yxati (hamma ko'radi)
+function fxSummary(g) {
+  const lines = g.fx.log
+    .filter((e) => ['dbl', 'shield', 'veto', 'mark'].includes(e.mech))
+    .map((e) => {
+      if (e.mech === 'dbl') return `⚖️ ${e.who} imkoniyatini ishlatdi: ovozi 2 ta sanaldi`;
+      if (e.mech === 'shield') return `🛡 ${e.who} imkoniyatini ishlatdi: bu raundda himoyalangan`;
+      if (e.mech === 'veto') return `🚫 ${e.who} imkoniyatini ishlatdi: ${e.target} ning ovozi sanalmadi`;
+      return `🎯 ${e.who} imkoniyatini ishlatdi: ${e.target} ga +1 ovoz qo'shildi`;
+    });
+  return lines.length ? `⚡ Bu raundda ishlatilgan imkoniyatlar:\n${lines.join('\n')}\n\n` : '';
+}
+
+// Imkoniyatni ishlatish: natija { ok, text, group? }. Hech qanday kutish (await) yo'q: holat bir lahzada o'zgaradi.
+function usePower(g, userId, arg) {
+  if (!g || g.finished || !g.started) return { ok: false, text: "O'yin hozir yo'q." };
+  const p = findPlayer(g, userId);
+  if (!p || !p.alive) return { ok: false, text: "Faqat tirik o'yinchi imkoniyat ishlatadi." };
+  if (!p.pw || !POWER_INFO[p.pw.mech]) return { ok: false, text: "Sizda imkoniyat yo'q." };
+  if (p.pw.used) return { ok: false, text: 'Imkoniyatingiz allaqachon ishlatilgan (bir marta beriladi).' };
+  const info = POWER_INFO[p.pw.mech];
+  if (!info.phases.includes(g.phase)) return { ok: false, text: `Bu imkoniyatni faqat ${info.when} ishlatish mumkin.` };
+  const mech = p.pw.mech;
+  let t = null;
+  if (info.target === 'player') {
+    t = findPlayer(g, Number(arg));
+    if (!t || !t.alive) return { ok: false, text: "Bu o'yinchi o'yinda emas." };
+    if (t.id === p.id) return { ok: false, text: "O'zingizga ishlata olmaysiz." };
+    if (mech === 'mark' && !(g.voteCandidates || []).some((c) => c.id === t.id)) return { ok: false, text: "Bu o'yinchi hozir ovozga qo'yilmagan." };
+  }
+  const hidden = t ? ATTRS.filter((a) => !t.revealed.includes(a.key)) : [];
+  let key = null;
+  if (info.target === 'attr') {
+    const a = ATTRS.find((x) => x.key === arg);
+    if (!a || !POOLS[a.key] || p.revealed.includes(a.key)) return { ok: false, text: 'Bu kartani almashtirib bo\'lmaydi (faqat ochilmagan karta almashtiriladi).' };
+    key = a.key;
+  }
+  if ((mech === 'peek' || mech === 'force') && !hidden.length) return { ok: false, text: 'Uning hamma kartasi allaqachon ochiq.' };
+  if (mech === 'peekSecret' && t.revealed.includes('secret')) return { ok: false, text: 'Uning siri allaqachon ochiq.' };
+
+  // hamma tekshiruvdan o'tdi: endi bir lahzada belgilaymiz
+  p.pw.used = true;
+  const rec = { mech, who: p.name, target: t ? t.name : null };
+  if (mech === 'dbl') { g.fx.dbl.add(p.id); g.fx.log.push(rec); return { ok: true, text: 'Tayyor: bu raundda ovozingiz 2 ta sanaladi. Endi ovoz bering.' }; }
+  if (mech === 'shield') { g.fx.shield.add(p.id); g.fx.log.push(rec); liveRefresh(g); return { ok: true, text: 'Tayyor: bu raundda sizni haydab bo\'lmaydi.' }; }
+  if (mech === 'veto') { g.fx.veto.add(t.id); g.fx.log.push(rec); return { ok: true, text: `Tayyor: ${t.name} ning ovozi bu raundda sanalmaydi.` }; }
+  if (mech === 'mark') { g.fx.mark.push(t.id); g.fx.log.push(rec); return { ok: true, text: `Tayyor: ${t.name} ga yashirin +1 ovoz qo'shildi.` }; }
+  if (mech === 'peek') {
+    const a = pick(hidden);
+    return { ok: true, text: `🔍 ${t.name} ning yopiq kartasi:\n${attrLine(t.card, a)}\n\n(faqat siz ko'rdingiz)` };
+  }
+  if (mech === 'peekSecret') return { ok: true, text: `🔍 ${t.name} ning siri:\n${attrLine(t.card, attrOf('secret'))}\n\n(faqat siz ko'rdingiz)` };
+  if (mech === 'force') {
+    const a = pick(hidden);
+    t.revealed.push(a.key);
+    liveRefresh(g);
+    return { ok: true, text: 'Tayyor: karta hammaga ochildi.', group: `⚡ ${p.name} imkoniyatini ishlatdi: ${t.name} ning yopiq kartasi ochildi!\n${attrLine(t.card, a)}` };
+  }
+  // swap: yangi qiymat hech kimda yo'q bo'lganlardan, bo'lmasa joriysidan boshqasi
+  const cur = p.card[key];
+  let free = POOLS[key].filter((v) => !g.players.some((q) => q.card[key] === v));
+  if (!free.length) free = POOLS[key].filter((v) => v !== cur);
+  p.card[key] = pick(free);
+  return { ok: true, text: `🔄 ${attrOf(key).label} kartangiz almashtirildi.\nYangisi: ${p.card[key]}\n\n(faqat siz ko'rdingiz)` };
+}
+
 // Ovoz berish: natija { ok, text }
 async function castVote(g, voterId, targetId) {
   if (!g || g.finished || g.phase !== 'vote') return { ok: false, text: 'Ovoz berish vaqti tugagan.' };
@@ -1699,8 +1702,7 @@ async function endVote(g) {
   if (g.finished || g.phase !== 'vote') return;
   newPhase(g, 'counting');
   await liveRetire(g);
-  const tally = new Map();
-  for (const t of g.votes.values()) tally.set(t, (tally.get(t) || 0) + 1);
+  const tally = weightedTally(g);
   const wasRevote = g.revote;
   if (!wasRevote) {
     // butun o'yin davomidagi ovozlar hisobi (tengsizlikni hal qilish uchun)
@@ -1710,17 +1712,17 @@ async function endVote(g) {
     }
     g.firstTally = new Map(tally);
   }
-  let candidates;
+  // himoyalanganlar (shield) haydalmaydi: ularga tushgan ovozlar hisobga olinmaydi.
+  // Hamma himoyalangan bo'lsa (kam uchraydi), himoya bekor qilinadi.
+  const unshielded = g.voteCandidates.filter((p) => !g.fx.shield.has(p.id));
+  const pool = unshielded.length ? unshielded : g.voteCandidates;
+  const poolMax = Math.max(...pool.map((p) => tally.get(p.id) || 0));
+  const noVotes = poolMax === 0;
+  let candidates = noVotes ? pool : pool.filter((p) => (tally.get(p.id) || 0) === poolMax);
   let note = '';
-  if (tally.size === 0) {
-    candidates = g.voteCandidates;
-    note = 'Hech kim ovoz bermadi.';
-  } else {
-    const max = Math.max(...tally.values());
-    candidates = g.voteCandidates.filter((p) => tally.get(p.id) === max);
-  }
+  if (noVotes) note = tally.size === 0 ? 'Hech kim ovoz bermadi.' : "Ovozlar faqat himoyalangan o'yinchilarga tushdi, shuning uchun qolganlardan biri tasodif bilan tanlandi.";
   // 1) Teng bo'lsa: faqat teng chiqqanlar o'rtasida qayta ovoz
-  if (candidates.length > 1 && !wasRevote && tally.size > 0) {
+  if (candidates.length > 1 && !wasRevote && !noVotes) {
     await say(g.chatId, `⚖️ Ovozlar teng bo'ldi: ${candidates.map((p) => p.name).join(', ')}.\nHozir faqat shular o'rtasida qayta ovoz beriladi.`);
     return startVote(g, candidates);
   }
@@ -1732,7 +1734,7 @@ async function endVote(g) {
     const maxAgainst = Math.max(...candidates.map((p) => p.votesAgainst || 0));
     const worst = candidates.filter((p) => (p.votesAgainst || 0) === maxAgainst);
     out = pick(worst);
-    if (tally.size === 0) note = 'Hech kim ovoz bermadi, shuning uchun tasodif bilan tanlandi.';
+    if (noVotes) note = tally.size === 0 ? 'Hech kim ovoz bermadi, shuning uchun tasodif bilan tanlandi.' : note;
     else
       note =
         worst.length === 1
@@ -1748,11 +1750,13 @@ async function endVote(g) {
   newPhase(g, 'between');
   out.alive = false;
   g.eliminated.push(out);
+  const fxText = fxSummary(g);
+  g.fx = newFx();
 
   const fullCard = ATTRS.map((a) => attrLine(out.card, a)).join('\n');
   const last = alive(g).length <= g.capacity;
   const head = `📊 OVOZ NATIJASI\n\n${results}\n${note ? '\n' + note + '\n' : ''}\n☠️ BUNKERDAN HAYDALDI: ${out.name}`;
-  const tail = `🪪 Uning to'liq kartasi:\n${fullCard}` + (last ? '' : `\n\n⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`);
+  const tail = `${fxText}🪪 Uning to'liq kartasi:\n${fullCard}` + (last ? '' : `\n\n⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`);
   const img = `out_${Math.floor(Math.random() * OUT_IMAGES)}`;
   if (head.length <= PHOTO_CAPTION_MAX) {
     // rasm ostida natija, keyingi xabarda haydalganning kartasi
@@ -1808,7 +1812,7 @@ const RULES_BTN = "📖 O'yin qoidasi";
 
 function rulePages() {
   return [
-`📖 QOIDALAR 1/6 - O'YIN G'OYASI
+`📖 QOIDALAR 1/7 - O'YIN G'OYASI
 
 Dunyo falokatga uchradi. Siz va do'stlaringiz omon qolish uchun bunkerga yashirindingiz, lekin joy cheklangan: hammaga yetmaydi.
 
@@ -1816,7 +1820,7 @@ Dunyo falokatga uchradi. Siz va do'stlaringiz omon qolish uchun bunkerga yashiri
 
 Qanday qilib? O'zingizni foydali ko'rsating, boshqalarning kamchiligini fosh qiling va ovoz berishda o'zingizni himoya qiling.`,
 
-`📖 QOIDALAR 2/6 - BOSHLASH
+`📖 QOIDALAR 2/7 - BOSHLASH
 
 1️⃣ Botni guruhga qo'shing.
 2️⃣ Guruhda /bunker yozing.
@@ -1827,9 +1831,9 @@ Qanday qilib? O'zingizni foydali ko'rsating, boshqalarning kamchiligini fosh qil
 🔒 Kartangiz faqat botning shaxsiy chatiga keladi, boshqalar ko'rmaydi.
 🎙 Gaplashish uchun guruhning ovozli chatini yoqing.`,
 
-`📖 QOIDALAR 3/6 - KARTANGIZ
+`📖 QOIDALAR 3/7 - KARTANGIZ
 
-Har o'yinchida 8 ta xususiyat bor:
+Har o'yinchida 9 ta xususiyat bor:
 
 👷 Kasb: bunkerda nima qila olasiz
 🎂 Yosh va 👫 Jins
@@ -1838,10 +1842,11 @@ Har o'yinchida 8 ta xususiyat bor:
 🎯 Hobbi: qo'shimcha ko'nikma
 🧳 Bagaj: bunkerga olib kirgan narsangiz
 🤫 Sir: eng xavfli xususiyat, ochilsa sizga qarshi ishlatiladi
+⚡ Imkoniyat: bir martalik maxsus kuch (7-sahifada)
 
 💡 Boshqalar faqat siz OCHGAN xususiyatlarni ko'radi. Qaysini qachon ochishni o'zingiz hal qilasiz.`,
 
-`📖 QOIDALAR 4/6 - RAUND
+`📖 QOIDALAR 4/7 - RAUND
 
 Har raund shunday o'tadi:
 
@@ -1854,9 +1859,9 @@ Har raund shunday o'tadi:
 ⏰ Karta ochish vaqti tugasa, guruhga ogohlantirish chiqadi. Yana ${KICK_GRACE_SEC} soniyada ham ochmasangiz, o'yindan chiqarilasiz (kartangiz o'yin oxirida ochiladi).
 
 ⚡ Hamma karta ochsa yoki hamma ovoz bersa, vaqt kutilmaydi.
-♾ 8 ta xususiyat 4 raundga yetadi. Hamma kartasi ochilgach, raundlar faqat muhokama va ovozdan iborat bo'ladi.`,
+♾ 9 ta xususiyat 5 raundga yetadi. Hamma kartasi ochilgach, raundlar faqat muhokama va ovozdan iborat bo'ladi.`,
 
-`📖 QOIDALAR 5/6 - MUHOKAMA
+`📖 QOIDALAR 5/7 - MUHOKAMA
 
 Bu o'yinning eng qiziq qismi. Ovozli chatda gaplashing:
 
@@ -1868,7 +1873,7 @@ Bu o'yinning eng qiziq qismi. Ovozli chatda gaplashing:
 
 Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. Sen ortiqchasan."`,
 
-`📖 QOIDALAR 6/6 - OVOZ VA G'ALABA
+`📖 QOIDALAR 6/7 - OVOZ VA G'ALABA
 
 🗳 Ovoz berishda ismlar tugmasi chiqadi. O'zingizga ovoz bera olmaysiz, ovozni o'zgartirish mumkin.
 ⚖️ Ovozlar teng bo'lsa, faqat teng chiqqanlar o'rtasida qayta ovoz beriladi. Yana teng bo'lsa, o'yin davomida ko'proq ovoz olgan haydaladi.
@@ -1877,7 +1882,28 @@ Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. S
 
 Misol: 6 o'yinchi bo'lsa, 4 raund o'tadi, 4 kishi haydaladi, 2 kishi bunkerga kiradi.
 
-Buyruqlar: /bunker - yangi xona, /stop - to'xtatish, /qoidalar - qoidalar.`
+Buyruqlar: /bunker - yangi xona, /stop - to'xtatish, /qoidalar - qoidalar.`,
+
+`📖 QOIDALAR 7/7 - ⚡ IMKONIYAT
+
+Har kimda bitta maxsus imkoniyat bor. U O'YIN DAVOMIDA FAQAT BIR MARTA ishlatiladi.
+
+Ishlatish: guruhdagi xabarda "⚡ Imkoniyatim" tugmasini bosing. Bot sizga shaxsiy chatda tugmalar yuboradi.
+
+🗳 Ovoz berish paytida ishlatiladiganlar:
+• Ikki ovoz: ovozingiz 2 ta sanaladi
+• Himoya: shu raundda haydalmaysiz
+• Ovozni bekor qilish: tanlangan o'yinchining ovozi sanalmaydi
+• Qo'shimcha ovoz: tanlangan o'yinchiga +1 ovoz
+
+🔍 Muhokama yoki ovoz paytida:
+• Ko'rish: boshqa o'yinchining yopiq kartasini (yoki sirini) faqat o'zingiz ko'rasiz
+• Majburan ochish: boshqaning yopiq kartasi hammaga ochiladi
+• Almashtirish: o'zingizning yopiq kartangiz yangisiga almashadi
+
+⚖️ Adolat uchun: o'zingizga ishlata olmaysiz, haydalgan ishlata olmaydi, bir marta ishlatilgach qaytmaydi. Ovoz natijasida ishlatilgan hamma imkoniyatlar guruhga e'lon qilinadi.
+
+⚠️ Hamma ovoz bersa, ovoz berish darhol tugaydi. Ovozga ta'sir qiladigan imkoniyatni avval ishlating, keyin ovoz bering.`
   ];
 }
 
@@ -2034,6 +2060,52 @@ bot.action(/^ready_([A-Z0-9]+)$/, async (ctx) => {
   liveRefresh(g);
 });
 
+// ⚡ Imkoniyat: tugma bosilganda o'yinchiga SHAXSIY chatda tavsif va tugmalar yuboriladi (hech kim ko'rmaydi)
+bot.action(/^pw_([A-Z0-9]+)$/, async (ctx) => {
+  const g = games[ctx.match[1]];
+  const p = g && !g.finished ? findPlayer(g, ctx.from.id) : null;
+  if (!p || !p.alive || !p.pw) return ctx.answerCbQuery("Siz o'yinda emassiz yoki haydalgansiz.", { show_alert: true });
+  if (p.pw.used) return ctx.answerCbQuery('Imkoniyatingiz allaqachon ishlatilgan.', { show_alert: true });
+  const info = POWER_INFO[p.pw.mech];
+  if (!info.phases.includes(g.phase)) {
+    return ctx.answerCbQuery(`Hozir emas. Bu imkoniyat faqat ${info.when} ishlatiladi.`, { show_alert: true });
+  }
+  await ctx.answerCbQuery('Shaxsiy chatga yubordim 📩');
+  const { main, hint } = splitHint(p.card.power);
+  let text = `⚡ <b>Sizning imkoniyatingiz</b>\n<b>${esc(main)}</b>\n<i>${esc(hint)}</i>\n\nBir marta ishlatiladi. Qaytarib bo'lmaydi.`;
+  const rows = [];
+  if (info.target === null) {
+    rows.push([Markup.button.callback('✅ Ishlatish', `pwu_${g.code}`)]);
+  } else if (info.target === 'player') {
+    text += '\n\nKimga ishlatasiz?';
+    const list = (p.pw.mech === 'mark' ? g.voteCandidates || [] : alive(g)).filter((q) => q.alive && q.id !== p.id);
+    for (let i = 0; i < list.length; i += 2) {
+      rows.push(list.slice(i, i + 2).map((q) => Markup.button.callback(short(q.name, 24), `pwt_${g.code}_${q.id}`)));
+    }
+  } else {
+    text += '\n\nQaysi yopiq kartangizni almashtirasiz?';
+    const own = ATTRS.filter((a) => POOLS[a.key] && !p.revealed.includes(a.key));
+    for (let i = 0; i < own.length; i += 2) {
+      rows.push(own.slice(i, i + 2).map((a) => Markup.button.callback(`${a.icon} ${a.label}`, `pws_${g.code}_${a.key}`)));
+    }
+  }
+  rows.push(backRow(g));
+  await say(p.id, text, htmlKb(rows));
+});
+
+async function finishPower(ctx, g, arg) {
+  const r = usePower(g, ctx.from.id, arg);
+  await ctx.answerCbQuery(r.ok ? 'Bajarildi ✅' : r.text, { show_alert: !r.ok });
+  if (!r.ok) return;
+  try {
+    await ctx.editMessageText(`⚡ ${r.text}`);
+  } catch (e) {}
+  if (r.group) await say(g.chatId, r.group);
+}
+bot.action(/^pwu_([A-Z0-9]+)$/, (ctx) => finishPower(ctx, games[ctx.match[1]], null));
+bot.action(/^pwt_([A-Z0-9]+)_(\d+)$/, (ctx) => finishPower(ctx, games[ctx.match[1]], ctx.match[2]));
+bot.action(/^pws_([A-Z0-9]+)_(\w+)$/, (ctx) => finishPower(ctx, games[ctx.match[1]], ctx.match[2]));
+
 bot.action(/^vote_([A-Z0-9]+)_(\d+)$/, async (ctx) => {
   const g = games[ctx.match[1]];
   const r = await castVote(g, ctx.from.id, Number(ctx.match[2]));
@@ -2088,4 +2160,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, usePower, weightedTally, newFx, POWER_INFO, ATTRS, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
