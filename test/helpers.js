@@ -16,6 +16,12 @@ delete process.env.SUPABASE_KEY;
 
 const Markup = {
   inlineKeyboard: (rows) => ({ reply_markup: { inline_keyboard: rows } }),
+  keyboard: (rows) => {
+    const m = { reply_markup: { keyboard: rows } };
+    m.resize = () => m;
+    m.persistent = () => m;
+    return m;
+  },
   button: {
     callback: (text, data) => ({ text, callback_data: data }),
     url: (text, url) => ({ text, url })
@@ -159,7 +165,7 @@ class FakeTelegraf {
           if (m) chain.push(Object.assign({}, h, { match: m }));
         }
       } else if (h.kind === 'hears' && text !== null) {
-        const ok = typeof h.trigger === 'string' ? h.trigger === text : h.trigger.test(text);
+        const ok = Array.isArray(h.trigger) ? h.trigger.includes(text) : typeof h.trigger === 'string' ? h.trigger === text : h.trigger.test(text);
         if (ok) chain.push(h);
       } else if (h.kind === 'on') {
         if (h.event === 'text' && text !== null) chain.push(h);

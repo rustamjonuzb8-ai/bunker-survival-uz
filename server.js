@@ -4,9 +4,9 @@ const { Telegraf, Markup } = require('telegraf');
 const TOKEN = process.env.BOT_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'Bunkeruz1_bot';
 const WINNERS = 2; // bunkerda doim 2 ta joy
-const MAX_PLAYERS = 12;
 // Quyidagi qiymatlar admin paneldagi "Sozlamalar" bo'limidan o'zgartiriladi (applySettings)
 const ENV_DEFAULTS = {
+  maxPlayers: Math.max(4, Math.min(30, Number(process.env.MAX_PLAYERS || 12))),
   minPlayers: Math.max(3, Number(process.env.MIN_PLAYERS || 4)),
   reveal: Number(process.env.REVEAL_SEC || 60),
   discuss1: Number(process.env.DISCUSS1_SEC || 90), // 1-kartadan keyin
@@ -17,6 +17,7 @@ const ENV_DEFAULTS = {
   kickGrace: Number(process.env.KICK_GRACE_SEC || 10) // karta ochish vaqti tugagach, chiqarishdan oldingi oxirgi imkoniyat
 };
 let MIN_PLAYERS = ENV_DEFAULTS.minPlayers;
+let MAX_PLAYERS = ENV_DEFAULTS.maxPlayers;
 let REVOTE_SEC = ENV_DEFAULTS.revote;
 let REVEAL_SEC = ENV_DEFAULTS.reveal;
 let DISCUSS1_SEC = ENV_DEFAULTS.discuss1;
@@ -48,15 +49,24 @@ let pendingDirect = null; // yuborilishi tasdiqlanishini kutayotgan xabar: { id,
 
 // --- sozlamalar ---
 const SETTING_DEFS = [
-  { key: 'minPlayers', label: "Eng kam o'yinchi", unit: 'kishi', step: 1, min: 3, max: MAX_PLAYERS },
-  { key: 'reveal', label: 'Karta ochish', unit: 'soniya', step: 10, min: 20, max: 180 },
-  { key: 'discuss1', label: '1-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
-  { key: 'discuss2', label: '2-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
-  { key: 'vote', label: 'Ovoz berish', unit: 'soniya', step: 5, min: 15, max: 120 },
-  { key: 'revote', label: 'Qayta ovoz', unit: 'soniya', step: 5, min: 15, max: 120 },
-  { key: 'between', label: "Raund oralig'i", unit: 'soniya', step: 1, min: 1, max: 30 },
-  { key: 'kickGrace', label: 'Chiqarishdan oldin kutish', unit: 'soniya', step: 5, min: 5, max: 60 }
+  { key: 'minPlayers', label: "Eng kam o'yinchi", btn: 'Eng kam', unit: 'kishi', step: 1, min: 3, max: 30 },
+  { key: 'maxPlayers', label: "Eng ko'p o'yinchi", btn: "Eng ko'p", unit: 'kishi', step: 1, min: 4, max: 30, presets: [12, 20, 30] },
+  { key: 'reveal', label: 'Karta ochish', btn: 'Karta ochish', unit: 'soniya', step: 10, min: 20, max: 180 },
+  { key: 'discuss1', label: '1-muhokama', btn: '1-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
+  { key: 'discuss2', label: '2-muhokama', btn: '2-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
+  { key: 'vote', label: 'Ovoz berish', btn: 'Ovoz berish', unit: 'soniya', step: 5, min: 15, max: 120 },
+  { key: 'revote', label: 'Qayta ovoz', btn: 'Qayta ovoz', unit: 'soniya', step: 5, min: 15, max: 120 },
+  { key: 'between', label: "Raund oralig'i", btn: 'Oraliq', unit: 'soniya', step: 1, min: 1, max: 30 },
+  { key: 'kickGrace', label: 'Chiqarishdan oldin kutish', btn: 'Kutish', unit: 'soniya', step: 5, min: 5, max: 60 }
 ];
+// sozlamalar bo'limlari: har biri bitta telefon ekraniga sig'adi
+const SETTING_SECTIONS = [
+  { id: 'players', title: "👥 O'yinchilar soni", keys: ['minPlayers', 'maxPlayers'], toggles: [] },
+  { id: 'time', title: '⏱ Vaqtlar', keys: ['reveal', 'discuss1', 'discuss2', 'vote', 'revote', 'between'], toggles: [] },
+  { id: 'kick', title: '🚪 Chiqarish qoidalari', keys: ['kickGrace'], toggles: ['kickAfk'] },
+  { id: 'bot', title: '🔔 Xabarlar va texnik ish', keys: [], toggles: ['notifyUsers', 'notifyGroups', 'maintenance'] }
+];
+const sectionOf = (key) => SETTING_SECTIONS.find((x) => x.keys.includes(key) || x.toggles.includes(key));
 const TOGGLE_DEFS = [
   { key: 'kickAfk', label: 'Karta ochmaganni o\'yindan chiqarish', def: true },
   { key: 'maintenance', label: 'Texnik ish (yangi o\'yin ochilmaydi)', def: false },
@@ -79,7 +89,8 @@ function getSetting(key) {
   return ENV_DEFAULTS[key];
 }
 function applySettings() {
-  MIN_PLAYERS = getSetting('minPlayers');
+  MAX_PLAYERS = getSetting('maxPlayers');
+  MIN_PLAYERS = Math.min(getSetting('minPlayers'), MAX_PLAYERS);
   REVEAL_SEC = getSetting('reveal');
   DISCUSS1_SEC = getSetting('discuss1');
   DISCUSS2_SEC = getSetting('discuss2');
@@ -524,19 +535,55 @@ function viewBroadcast() {
 }
 
 // ----- sozlamalar -----
-function viewSettings() {
+const SETTING_HELP = {
+  minPlayers: "O'yin boshlanishi uchun eng kam o'yinchi",
+  maxPlayers: "Xonaga qo'shila oladigan eng ko'p o'yinchi",
+  reveal: 'Har bir karta ochish uchun vaqt',
+  discuss1: '1-kartadan keyingi muhokama',
+  discuss2: '2-kartadan keyingi muhokama',
+  vote: 'Ovoz berish vaqti',
+  revote: "Ovozlar teng bo'lsa, qayta ovoz vaqti",
+  between: "Raundlar orasidagi tanaffus",
+  kickGrace: "Karta ochish tugagach, ochmaganga ogohlantirishdan keyingi oxirgi imkoniyat"
+};
+const settingRow = (d) => [
+  Markup.button.callback('➖', `adm_s_${d.key}_d`),
+  Markup.button.callback(short(`${d.btn || d.label}: ${getSetting(d.key)}`, 26), 'adm_noop'),
+  Markup.button.callback('➕', `adm_s_${d.key}_u`)
+];
+function viewSettings(section) {
   const s = ensureSettings();
-  const lines = SETTING_DEFS.map((d) => `• ${d.label}: <b>${getSetting(d.key)}</b> ${d.unit}`).join('\n');
-  const tl = TOGGLE_DEFS.map((t) => `• ${t.label}: <b>${s[t.key] ? 'YOQILGAN' : 'o\'chiq'}</b>`).join('\n');
-  const rows = SETTING_DEFS.map((d) => [
-    Markup.button.callback('➖', `adm_s_${d.key}_d`),
-    Markup.button.callback(`${d.label}: ${getSetting(d.key)}`, 'adm_noop'),
-    Markup.button.callback('➕', `adm_s_${d.key}_u`)
-  ]);
-  TOGGLE_DEFS.forEach((t) => rows.push([Markup.button.callback(`${s[t.key] ? '✅' : '⬜'} ${t.label}`, `adm_t_${t.key}`)]));
-  rows.push([Markup.button.callback('♻️ Vaqtlarni asl holiga', 'adm_s_reset'), Markup.button.callback('⬅️ Menyu', 'adm_menu')]);
+  const sec = SETTING_SECTIONS.find((x) => x.id === section);
+  if (!sec) {
+    const rows = SETTING_SECTIONS.map((x) => [Markup.button.callback(x.title, `adm_ss_${x.id}`)]);
+    rows.push([Markup.button.callback('♻️ Hammasini asl holiga', 'adm_s_reset'), Markup.button.callback('⬅️ Menyu', 'adm_menu')]);
+    const sum =
+      `👥 O'yinchi: <b>${getSetting('minPlayers')}–${getSetting('maxPlayers')}</b> kishi\n` +
+      `⏱ Karta ${getSetting('reveal')} s · muhokama ${getSetting('discuss1')}/${getSetting('discuss2')} s · ovoz ${getSetting('vote')} s\n` +
+      `🚪 Karta ochmaganni chiqarish: <b>${s.kickAfk ? 'yoqilgan' : "o'chiq"}</b> (kutish ${getSetting('kickGrace')} s)\n` +
+      `🛠 Texnik ish: <b>${s.maintenance ? 'YOQILGAN' : "o'chiq"}</b>`;
+    return { text: `⚙️ <b>Sozlamalar</b>\n\n${sum}\n\nQaysi bo'limni o'zgartirasiz?`, kb: Markup.inlineKeyboard(rows) };
+  }
+  const defs = sec.keys.map((k) => SETTING_DEFS.find((d) => d.key === k));
+  const rows = [];
+  let help = '';
+  defs.forEach((d) => {
+    rows.push(settingRow(d));
+    if (d.presets) rows.push(d.presets.map((v) => Markup.button.callback(`${getSetting(d.key) === v ? '• ' : ''}${v}`, `adm_sv_${d.key}_${v}`)));
+    help += `• <b>${d.label}</b> (${getSetting(d.key)} ${d.unit}, asl: ${ENV_DEFAULTS[d.key]}): ${SETTING_HELP[d.key]}\n`;
+  });
+  const tdefs = sec.toggles.map((k) => TOGGLE_DEFS.find((t) => t.key === k));
+  tdefs.forEach((t) => {
+    rows.push([Markup.button.callback(`${s[t.key] ? '✅' : '⬜'} ${t.label}`, `adm_t_${t.key}`)]);
+    help += `• <b>${t.label}</b>: ${s[t.key] ? 'YOQILGAN' : "o'chiq"}\n`;
+  });
+  let warn = '';
+  if (sec.id === 'players' && getSetting('maxPlayers') > POOL_MIN) {
+    warn = `\n⚠️ ${POOL_MIN} tadan ko'p o'yinchida ba'zi kartalar takrorlanishi mumkin.`;
+  }
+  rows.push([Markup.button.callback('⬅️ Sozlamalar', 'adm_set'), Markup.button.callback('🏠 Menyu', 'adm_menu')]);
   return {
-    text: `⚙️ <b>Sozlamalar</b>\n\n<b>O'yin:</b>\n${lines}\n\n<b>Bot:</b>\n${tl}\n\n➖ ➕ tugmalari qiymatni o'zgartiradi. Yangi qiymat keyingi bosqichdan boshlab kuchga kiradi va bot qayta ishga tushsa ham saqlanadi.`,
+    text: `${sec.title}\n\n${help}${warn}\n➖ ➕ qiymatni o'zgartiradi. Yangi qiymat keyingi bosqichdan kuchga kiradi va saqlanib qoladi.`,
     kb: Markup.inlineKeyboard(rows)
   };
 }
@@ -579,7 +626,31 @@ bot.command('admin', async (ctx) => {
     );
   }
   if (!isAdmin(ctx)) return ctx.reply('Bu buyruq faqat bot egasi uchun.');
+  await ctx.reply('⌨️ Boshqaruv tugmalari pastda doim turadi 👇', adminKeyboard());
   await ctx.reply(MENU_TEXT, menuKb());
+});
+
+// pastda doim turadigan tugmalar (faqat bot egasida)
+const ADMIN_BTNS = {
+  '📊 Statistika': () => viewStats(),
+  '🏘 Guruhlar': () => viewGroups(0),
+  '👥 Foydalanuvchilar': () => viewUsers('all', 0),
+  "🎮 O'yinlar": () => viewLive(),
+  '📢 Xabar yuborish': () => viewBroadcast(),
+  '⚙️ Sozlamalar': () => viewSettings()
+};
+const adminKeyboard = () =>
+  Markup.keyboard([
+    ['📊 Statistika', '🏘 Guruhlar'],
+    ['👥 Foydalanuvchilar', "🎮 O'yinlar"],
+    ['📢 Xabar yuborish', '⚙️ Sozlamalar']
+  ])
+    .resize()
+    .persistent();
+bot.hears(Object.keys(ADMIN_BTNS), async (ctx, next) => {
+  if (ctx.chat.type !== 'private' || !isAdmin(ctx)) return next();
+  adminInput = null; // tugma bosilsa, kutilayotgan "xabar yozish" bekor bo'ladi
+  await sendView(ctx, ADMIN_BTNS[ctx.message.text]());
 });
 
 // admin tugmalari uchun umumiy o'ram: faqat bot egasi bosa oladi, xatolar botni yiqitmaydi
@@ -759,17 +830,42 @@ adminAction('adm_mgo', async (ctx) => {
 });
 
 // ----- sozlamalar -----
+adminAction(/^adm_ss_(players|time|kick|bot)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await showView(ctx, viewSettings(ctx.match[1]));
+});
+// eng kam o'yinchi eng ko'pidan oshmasligi, eng ko'pi esa eng kamidan kam bo'lmasligi uchun chegaralar
+function limitsOf(d) {
+  let lo = d.min;
+  let hi = d.max;
+  if (d.key === 'minPlayers') hi = Math.min(hi, getSetting('maxPlayers'));
+  if (d.key === 'maxPlayers') lo = Math.max(lo, getSetting('minPlayers'));
+  return { lo, hi };
+}
+function setSettingValue(d, next) {
+  ensureSettings().values[d.key] = next;
+  applySettings();
+  saveSoon();
+}
 adminAction(new RegExp(`^adm_s_(${SETTING_DEFS.map((d) => d.key).join('|')})_(d|u)$`), async (ctx) => {
   const d = SETTING_DEFS.find((x) => x.key === ctx.match[1]);
   const up = ctx.match[2] === 'u';
   const cur = getSetting(d.key);
-  const next = Math.min(d.max, Math.max(d.min, cur + (up ? d.step : -d.step)));
+  const { lo, hi } = limitsOf(d);
+  const next = Math.min(hi, Math.max(lo, cur + (up ? d.step : -d.step)));
   if (next === cur) return ctx.answerCbQuery(`Chegara: ${up ? 'eng ko\'pi' : 'eng kami'} ${cur} ${d.unit}`);
-  ensureSettings().values[d.key] = next;
-  applySettings();
-  saveSoon();
+  setSettingValue(d, next);
   await ctx.answerCbQuery(`${d.label}: ${next} ${d.unit}`);
-  await showView(ctx, viewSettings());
+  await showView(ctx, viewSettings(sectionOf(d.key).id));
+});
+adminAction(/^adm_sv_(\w+)_(\d+)$/, async (ctx) => {
+  const d = SETTING_DEFS.find((x) => x.key === ctx.match[1] && x.presets);
+  const v = Number(ctx.match[2]);
+  if (!d || !d.presets.includes(v)) return ctx.answerCbQuery();
+  if (v < limitsOf(d).lo) return ctx.answerCbQuery("Eng kam o'yinchi sonidan kam bo'lmaydi", { show_alert: true });
+  setSettingValue(d, v);
+  await ctx.answerCbQuery(`${d.label}: ${v} ${d.unit}`);
+  await showView(ctx, viewSettings(sectionOf(d.key).id));
 });
 adminAction('adm_s_reset', async (ctx) => {
   ensureSettings().values = {};
@@ -784,7 +880,7 @@ adminAction(new RegExp(`^adm_t_(${TOGGLE_DEFS.map((t) => t.key).join('|')})$`), 
   s[key] = !s[key];
   saveSoon();
   await ctx.answerCbQuery(s[key] ? 'Yoqildi' : 'O\'chirildi');
-  await showView(ctx, viewSettings());
+  await showView(ctx, viewSettings(sectionOf(key).id));
 });
 
 // ----- hammaga xabar -----
@@ -1010,6 +1106,8 @@ function makeDraws() {
     hobby: drawer(HOBBIES), baggage: drawer(BAGGAGE), secret: drawer(SECRETS)
   };
 }
+
+const POOL_MIN = Math.min(JOBS.length, HEALTH.length, TRAITS.length, HOBBIES.length, BAGGAGE.length, SECRETS.length);
 
 const ATTRS = [
   { key: 'job', icon: '👷', label: 'Kasb' },
@@ -1867,13 +1965,15 @@ bot.start(async (ctx) => {
   const payload = ctx.startPayload || '';
   if (payload === 'rules') return sendRules(ctx);
   if (!payload.startsWith('join_')) {
-    return ctx.reply(
+    await ctx.reply(
       'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nO\'yin qoidasini o\'rganish uchun pastdagi tugmani bosing 👇',
       Markup.inlineKeyboard([
         [Markup.button.url('➕ Guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)],
         [Markup.button.callback(RULES_BTN, 'rules_open')]
       ])
     );
+    if (isAdmin(ctx) && ctx.chat.type === 'private') await ctx.reply('🛠 Boshqaruv tugmalari pastda 👇', adminKeyboard());
+    return;
   }
   const g = games[payload.slice(5)];
   const name = ctx.from.first_name || ctx.from.username || 'O\'yinchi';

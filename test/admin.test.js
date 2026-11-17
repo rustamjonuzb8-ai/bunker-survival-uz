@@ -12,8 +12,9 @@ const strangers = H.user(555, 'Begona', 'begona');
 // ---------- kirish va xavfsizlik ----------
 test('/admin: egasiga menyu chiqadi, 6 ta bo\'lim', async () => {
   const ctx = await H.adminSay('/admin');
-  assert.equal(ctx.replies.length, 1);
-  assert.deepEqual(H.allDataOf(ctx.replies[0]), ['adm_stats', 'adm_g_0', 'adm_u_all_0', 'adm_live', 'adm_bc', 'adm_set']);
+  assert.equal(ctx.replies.length, 2); // pastdagi tugmalar + menyu
+  assert.ok(ctx.replies[0].extra.reply_markup.keyboard, 'pastda doimiy tugmalar');
+  assert.deepEqual(H.allDataOf(ctx.replies[1]), ['adm_stats', 'adm_g_0', 'adm_u_all_0', 'adm_live', 'adm_bc', 'adm_set']);
 });
 
 test('/admin: begona odamga rad javobi, guruhda jim', async () => {
@@ -140,7 +141,7 @@ test('taqiqlangan odam botdan foydalana olmaydi, egasi taqiqlanmaydi', async () 
   // egasi har doim ishlaydi
   A.getDB().users[ADMIN_ID] = { id: ADMIN_ID, name: 'Egasi', first: 1, last: 1, banned: true };
   ctx = await H.adminSay('/admin');
-  assert.equal(ctx.replies.length, 1);
+  assert.equal(ctx.replies.length, 2);
 });
 
 test('/odam: ism, @username va ID bo\'yicha qidiruv', async () => {
@@ -324,8 +325,8 @@ test('xabar yozish holatida buyruqlar xalaqit bermaydi, juda uzun matn rad etila
   H.seedUsers(1);
   await H.adminClick('adm_m_u_1001');
   let ctx = await H.adminSay('/admin'); // buyruq xabar sifatida olinmaydi
-  assert.equal(ctx.replies.length, 1);
-  assert.match(ctx.replies[0].text, /boshqaruv paneli/);
+  assert.equal(ctx.replies.length, 2);
+  assert.match(ctx.replies[1].text, /boshqaruv paneli/);
   ctx = await H.adminSay('x'.repeat(4001));
   assert.match(ctx.replies[0].text, /juda uzun/);
   ctx = await H.adminSay('Normal');
@@ -364,8 +365,8 @@ test('/xabar: taqiqlangan va bloklaganlarga yuborilmaydi', async () => {
 
 // ---------- sozlamalar ----------
 test('sozlamalar: ➕➖ qiymatni o\'zgartiradi va o\'yinga darhol qo\'llanadi', async () => {
-  let e = H.lastEdit(await H.adminClick('adm_set'));
-  assert.match(e.text, /Eng kam o'yinchi: <b>4<\/b>/);
+  let e = H.lastEdit(await H.adminClick('adm_ss_players'));
+  assert.match(e.text, /Eng kam o'yinchi<\/b> \(4 kishi/);
   await H.adminClick('adm_s_minPlayers_u');
   assert.equal(A.getSetting('minPlayers'), 5);
   assert.equal(A.getLimits().MIN_PLAYERS, 5);
@@ -374,7 +375,7 @@ test('sozlamalar: ➕➖ qiymatni o\'zgartiradi va o\'yinga darhol qo\'llanadi',
   await H.adminClick('adm_s_reveal_d');
   assert.equal(A.getLimits().REVEAL_SEC, 50);
   e = H.lastEdit(await H.adminClick('adm_s_between_u'));
-  assert.match(e.text, /Raund oralig'i: <b>5<\/b>/);
+  assert.match(e.text, /Raund oralig'i<\/b> \(5 soniya/);
   assert.equal(A.getLimits().BETWEEN_SEC, 5);
 });
 
@@ -555,4 +556,59 @@ test('o\'yinning o\'zi buzilmagan: xona ochish va qo\'shilish ishlaydi', async (
   await H.adminClick('adm_s_minPlayers_u');
   const ctx = await H.click(host, 'start_' + g.code, H.groupChat(-100888));
   assert.match(ctx.answers[0].text, /Kamida 5/);
+});
+
+// ---------- pastdagi doimiy tugmalar va yangi sozlamalar ----------
+test('pastdagi tugmalar: faqat egasida ishlaydi, har biri o\'z bo\'limini ochadi', async () => {
+  H.seedUsers(2);
+  H.seedChats(2);
+  const labels = {
+    '📊 Statistika': /BUNKER statistikasi/,
+    '🏘 Guruhlar': /Guruhlar/,
+    '👥 Foydalanuvchilar': /Foydalanuvchilar/,
+    "🎮 O'yinlar": /Hozirgi o'yinlar/,
+    '📢 Xabar yuborish': /Xabar yuborish/,
+    '⚙️ Sozlamalar': /Sozlamalar/
+  };
+  for (const [label, re] of Object.entries(labels)) {
+    const ctx = await H.adminSay(label);
+    assert.equal(ctx.replies.length, 1, label);
+    assert.match(ctx.replies[0].text, re, label);
+  }
+  const ctx = await H.say(strangers, '📊 Statistika');
+  assert.equal(ctx.replies.length, 0, 'begonaga hech narsa chiqmaydi');
+  // /start egasiga pastdagi tugmalarni ham beradi
+  const st = await H.adminSay('/start');
+  assert.ok(st.replies.some((r) => r.extra && r.extra.reply_markup && r.extra.reply_markup.keyboard));
+});
+
+test('sozlamalar: bo\'limlarga bo\'lingan, eng ko\'p o\'yinchi va tayyor qiymatlar ishlaydi', async () => {
+  const home = H.lastEdit(await H.adminClick('adm_set'));
+  assert.deepEqual(H.allDataOf(home).filter((d) => d.startsWith('adm_ss_')), ['adm_ss_players', 'adm_ss_time', 'adm_ss_kick', 'adm_ss_bot']);
+  assert.equal(A.getSetting('maxPlayers'), 12);
+  await H.adminClick('adm_sv_maxPlayers_30');
+  assert.equal(A.getSetting('maxPlayers'), 30);
+  await H.adminClick('adm_sv_maxPlayers_20');
+  assert.equal(A.getSetting('maxPlayers'), 20);
+  // eng kam o'yinchi eng ko'pidan oshmaydi
+  for (let i = 0; i < 30; i++) await H.adminClick('adm_s_minPlayers_u');
+  assert.equal(A.getSetting('minPlayers'), 20);
+  // eng ko'pi eng kamidan kam bo'lmaydi
+  const ctx = await H.adminClick('adm_sv_maxPlayers_12');
+  assert.equal(A.getSetting('maxPlayers'), 20);
+  assert.match(ctx.answers[0].text, /kam bo'lmaydi/);
+  // o'yin xonasi yangi chegarani ishlatadi
+  await H.adminClick('adm_s_reset');
+  assert.equal(A.getSetting('maxPlayers'), 12);
+});
+
+test('eng ko\'p o\'yinchi sozlamasi xonaga ta\'sir qiladi', async () => {
+  await H.adminClick('adm_sv_maxPlayers_20');
+  const g = server.createRoom(-100900, 1);
+  for (let i = 1; i <= 20; i++) assert.equal(server.joinPlayer(g, i, 'P' + i).ok, true);
+  assert.equal(server.joinPlayer(g, 99, 'Ortiqcha').ok, false);
+  await H.adminClick('adm_s_reset');
+  const g2 = server.createRoom(-100901, 1);
+  for (let i = 1; i <= 12; i++) server.joinPlayer(g2, i, 'P' + i);
+  assert.equal(server.joinPlayer(g2, 99, 'Ortiqcha').ok, false);
 });
