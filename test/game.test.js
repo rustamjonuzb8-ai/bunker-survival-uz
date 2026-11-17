@@ -58,8 +58,16 @@ const idle = async (g, limitSec = 2000) => {
   return sec;
 };
 
+const findPlayerIn = (g, u) => g.players.find((p) => p.id === u.id);
+
+// eski xulq (karta ochmaganni chiqarmasdan o'tkazib yuborish): vaqt va boshqa bosqichlarni sinash uchun
+const noKick = () => {
+  A.ensureSettings().kickAfk = false;
+};
+
 // ---------- o'yin oqimi va vaqt hisobi ----------
 test('hech kim hech narsa qilmasa ham o\'yin o\'zi tugaydi; vaqt hisobi to\'g\'ri', async () => {
+  noKick();
   const { g } = await startGame(4);
   const sec = await idle(g);
   assert.equal(g.finished, true);
@@ -73,6 +81,7 @@ test('hech kim hech narsa qilmasa ham o\'yin o\'zi tugaydi; vaqt hisobi to\'g\'r
 });
 
 test('jonli xabar: har bosqichda bittadan, eskisi o\'chiriladi, doimiy xabarlar qoladi', async () => {
+  noKick();
   const { g } = await startGame(4);
   assert.equal(liveMsgs().length, 1);
   const first = g.liveMsgId;
@@ -376,6 +385,7 @@ test('guruhga yuborish ishlamasa ham o\'yin to\'xtab qolmaydi', async () => {
 });
 
 test('jonli xabar: o\'chirib bo\'lmasa "tugadi" deb qoldiriladi (tugmalarsiz)', async () => {
+  noKick();
   const { g } = await startGame(4);
   const live = g.liveMsgId;
   world.deleteFail = true;
@@ -494,6 +504,7 @@ test('o\'yin boshida falokat rasmi yuboriladi, keyingi safar file_id ishlatiladi
 });
 
 test('haydalganda rasm ostida natija, keyingi xabarda karta; oxirida g\'alaba rasmi', async () => {
+  noKick();
   const { g } = await startGame(4);
   await idle(g);
   const outs = world.photos.filter((x) => /^out_\d\.jpg$/.test(x.name || '') || x.fileId);
@@ -528,6 +539,7 @@ test('natija rasm ostiga sig\'masa (juda uzun ismlar): rasm qisqa, natija alohid
 
 test('rasm yuborilmasa o\'yin to\'xtamaydi: matn sifatida chiqadi', async () => {
   world.photoFail = true;
+  noKick();
   const { g } = await startGame(4);
   assert.equal(world.photos.length, 0);
   assert.ok(groupMsgs().some((m) => /O'YIN BOSHLANDI/.test(m.text)), 'matnli zaxira');
@@ -556,4 +568,111 @@ test('mavjud bo\'lmagan rasm yoki juda uzun matn: oddiy xabar', async () => {
   await G.sayPhoto(CHAT, 'win', 'x'.repeat(1001));
   assert.equal(world.photos.length, 0);
   assert.equal(groupMsgs().length, 2);
+});
+
+// ---------- karta ochmaganni o'yindan chiqarish ----------
+async function revealThree(g, users) {
+  for (const u of users.slice(0, 3)) await reveal(g, u, 'job');
+}
+
+test('karta ochmagan: 60 s dan keyin ogohlantirish, yana 10 s dan keyin o\'yindan chiqadi, o\'yin davom etadi', async () => {
+  const { g, users } = await startGame(4);
+  await revealThree(g, users);
+  await advance(59000);
+  assert.equal(g.phase, 'reveal');
+  assert.ok(!groupMsgs().some((m) => /kartangizni oching/.test(m.text)), 'vaqtidan oldin ogohlantirish yo\'q');
+  await advance(1000); // 60 s
+  const warn = groupMsgs().find((m) => /kartangizni oching/.test(m.text));
+  assert.ok(warn && warn.text.includes('P4'), 'ogohlantirishda o\'yinchi ismi');
+  assert.ok(!/P1|P2|P3/.test(warn.text), 'ochganlar tilga olinmaydi');
+  assert.ok(dms(users[3].id).some((m) => /o'yindan chiqarilasiz/.test(m.text)), 'shaxsiy chatda ham ogohlantirish');
+  assert.equal(g.phase, 'reveal');
+  assert.equal(findPlayerIn(g, users[3]).alive, true);
+  await advance(4000); // jonli xabar yangilanadi
+  assert.match(world.edits[world.edits.length - 1].text, /Vaqt tugadi/);
+  assert.equal(g.phase, 'reveal');
+  await advance(6000); // jami 70 s
+  const out = groupMsgs().find((m) => /o'yindan chiqdi/.test(m.text));
+  assert.ok(out && out.text.includes('P4'), 'chiqarilgani haqida xabar');
+  const p4 = findPlayerIn(g, users[3]);
+  assert.equal(p4.alive, false);
+  assert.equal(p4.kicked, true);
+  assert.equal(g.phase, 'discuss', 'o\'yin davom etadi');
+  assert.equal(g.finished, false);
+  assert.equal(A.getDB().kickedAfk, 1);
+  assert.equal(g.hostId, users[0].id, 'xona egasi o\'zgarmaydi');
+  assert.ok(dms(users[3].id).some((m) => /o'yindan chiqarildingiz/.test(m.text)));
+  // chiqarilgan odam endi ovoz bera olmaydi va "tayyorman" bosa olmaydi
+  const r = await server.castVote(g, users[3].id, users[0].id);
+  assert.equal(r.ok, false);
+});
+
+test('karta ochmagan 10 soniyalik muhlatda ochsa: chiqarilmaydi, o\'yin darrov davom etadi', async () => {
+  const { g, users } = await startGame(4);
+  await revealThree(g, users);
+  await advance(60000);
+  assert.equal(g.phase, 'reveal');
+  await reveal(g, users[3], 'job');
+  await advance(500);
+  assert.equal(g.phase, 'discuss');
+  assert.equal(findPlayerIn(g, users[3]).alive, true);
+  assert.ok(!groupMsgs().some((m) => /o'yindan chiqdi/.test(m.text)));
+  assert.equal(A.getDB().kickedAfk, 0);
+});
+
+test('hamma vaqtidan oldin ochsa: ogohlantirishsiz, kutmasdan davom etadi', async () => {
+  const { g, users } = await startGame(4);
+  await allReveal(g, users, 'job');
+  assert.equal(g.phase, 'discuss');
+  assert.ok(!groupMsgs().some((m) => /kartangizni oching/.test(m.text)));
+});
+
+test('xona egasi karta ochmay chiqarilsa: adminlik birinchi qo\'shilgan tirik o\'yinchiga o\'tadi', async () => {
+  const { g, users, host } = await startGame(4);
+  for (const u of users.slice(1)) await reveal(g, u, 'job'); // xona egasi (P1) ochmaydi
+  await advance(60000);
+  await advance(10000);
+  assert.equal(findPlayerIn(g, host).alive, false);
+  assert.equal(g.hostId, users[1].id);
+  assert.ok(groupMsgs().some((m) => /Endi xona egasi: P2/.test(m.text)));
+  // yangi xona egasi o'yinni boshqara oladi
+  const ctx = await H.click(users[1], 'skip_' + g.code, group());
+  assert.equal(g.phase, 'reveal', 'P2 muhokamadan 2-kartaga o\'tkazdi');
+});
+
+test('chiqarilganning kartasi o\'yin oxirida ochiladi (oldin ochilmaydi)', async () => {
+  const { g, users } = await startGame(4);
+  await revealThree(g, users);
+  await advance(60000);
+  await advance(10000);
+  const p4 = findPlayerIn(g, users[3]);
+  assert.ok(!groupMsgs().some((m) => m.text.includes(p4.card.job) && /to'liq kartasi/.test(m.text)), 'o\'yin davomida karta ochilmaydi');
+  await idle(g); // qolganlar ham ochmay, hammasi chiqarilib o'yin tugaydi
+  assert.equal(g.finished, true);
+  const cards = groupMsgs().find((m) => /Karta ochmay chiqib ketganlarning kartasi/.test(m.text));
+  assert.ok(cards && cards.text.includes('P4') && cards.text.includes(p4.card.job));
+  assert.ok(findGroup(/O'YIN TUGADI/));
+});
+
+test('"Karta ochmaganni chiqarish" o\'chirilsa: eski tartib (o\'tkazib yuboriladi)', async () => {
+  noKick();
+  const { g, users } = await startGame(4);
+  await revealThree(g, users);
+  await advance(60000);
+  assert.equal(g.phase, 'discuss');
+  assert.equal(findPlayerIn(g, users[3]).alive, true);
+  assert.ok(!groupMsgs().some((m) => /kartangizni oching|o'yindan chiqdi/.test(m.text)));
+});
+
+test('kutish vaqti sozlamadan o\'zgaradi (admin paneldagi "Chiqarishdan oldin kutish")', async () => {
+  await H.adminClick('adm_s_kickGrace_u'); // 10 -> 15
+  assert.equal(A.getLimits().KICK_GRACE_SEC, 15);
+  const { g, users } = await startGame(4);
+  await revealThree(g, users);
+  await advance(60000);
+  assert.ok(groupMsgs().some((m) => /15 soniyada ochmasangiz/.test(m.text)));
+  await advance(14000);
+  assert.equal(findPlayerIn(g, users[3]).alive, true);
+  await advance(1000);
+  assert.equal(findPlayerIn(g, users[3]).alive, false);
 });

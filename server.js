@@ -13,7 +13,8 @@ const ENV_DEFAULTS = {
   discuss2: Number(process.env.DISCUSS2_SEC || 80), // 2-kartadan keyin
   vote: Number(process.env.VOTE_SEC || 45),
   revote: Number(process.env.REVOTE_SEC || 30),
-  between: Number(process.env.BETWEEN_SEC || 4)
+  between: Number(process.env.BETWEEN_SEC || 4),
+  kickGrace: Number(process.env.KICK_GRACE_SEC || 10) // karta ochish vaqti tugagach, chiqarishdan oldingi oxirgi imkoniyat
 };
 let MIN_PLAYERS = ENV_DEFAULTS.minPlayers;
 let REVOTE_SEC = ENV_DEFAULTS.revote;
@@ -22,6 +23,7 @@ let DISCUSS1_SEC = ENV_DEFAULTS.discuss1;
 let DISCUSS2_SEC = ENV_DEFAULTS.discuss2;
 let VOTE_SEC = ENV_DEFAULTS.vote;
 let BETWEEN_SEC = ENV_DEFAULTS.between;
+let KICK_GRACE_SEC = ENV_DEFAULTS.kickGrace;
 
 const bot = new Telegraf(TOKEN || 'no-token');
 const games = {};     // kod -> o'yin
@@ -52,9 +54,11 @@ const SETTING_DEFS = [
   { key: 'discuss2', label: '2-muhokama', unit: 'soniya', step: 10, min: 20, max: 300 },
   { key: 'vote', label: 'Ovoz berish', unit: 'soniya', step: 5, min: 15, max: 120 },
   { key: 'revote', label: 'Qayta ovoz', unit: 'soniya', step: 5, min: 15, max: 120 },
-  { key: 'between', label: "Raund oralig'i", unit: 'soniya', step: 1, min: 1, max: 30 }
+  { key: 'between', label: "Raund oralig'i", unit: 'soniya', step: 1, min: 1, max: 30 },
+  { key: 'kickGrace', label: 'Chiqarishdan oldin kutish', unit: 'soniya', step: 5, min: 5, max: 60 }
 ];
 const TOGGLE_DEFS = [
+  { key: 'kickAfk', label: 'Karta ochmaganni o\'yindan chiqarish', def: true },
   { key: 'maintenance', label: 'Texnik ish (yangi o\'yin ochilmaydi)', def: false },
   { key: 'notifyUsers', label: 'Yangi foydalanuvchi haqida xabar', def: true },
   { key: 'notifyGroups', label: 'Yangi guruh haqida xabar', def: true }
@@ -82,6 +86,7 @@ function applySettings() {
   VOTE_SEC = getSetting('vote');
   REVOTE_SEC = getSetting('revote');
   BETWEEN_SEC = getSetting('between');
+  KICK_GRACE_SEC = getSetting('kickGrace');
 }
 
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -335,7 +340,8 @@ function viewStats() {
     `🔥 Faol foydalanuvchilar:\n   24 soat: <b>${within(1)}</b> | 7 kun: <b>${within(7)}</b> | 30 kun: <b>${within(30)}</b>\n\n` +
     `🏘 Guruhlar: <b>${activeChats}</b> (jami qo'shilgan: ${chats.length})\n\n` +
     `🎮 O'yinlar: boshlangan <b>${DB.gamesStarted || 0}</b>, tugagan <b>${DB.gamesFinished || 0}</b>\n` +
-    `   Hozir o'ynalayotgan: <b>${live}</b>\n\n` +
+    `   Hozir o'ynalayotgan: <b>${live}</b>\n` +
+    `   🚪 Karta ochmagani uchun chiqarilganlar: <b>${DB.kickedAfk || 0}</b>\n\n` +
     (ensureSettings().maintenance ? `🛠 <b>Texnik ish rejimi YOQILGAN</b> (yangi o'yin ochilmaydi)\n\n` : '') +
     `🕒 Server ishga tushgan: ${fmtTime(START_TIME)}\n` +
     `💾 Saqlash: ${useSb() ? 'Supabase (doimiy)' : 'vaqtinchalik fayl (qayta ishga tushsa o\'chishi mumkin)'}`;
@@ -1177,7 +1183,10 @@ function liveRender(g) {
       .map((p) => `${g.roundRevealed && g.roundRevealed.has(p.id) ? '✅' : '⏳'} ${esc(p.name)}`)
       .join('\n');
     const done = alive(g).filter((p) => g.roundRevealed && g.roundRevealed.has(p.id)).length;
-    body = `📂 <b>${g.step}-karta ochiladi</b>\nHar kim botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi.\n\n${list}\n\nOchganlar: <b>${done}/${alive(g).length}</b>`;
+    const warn = g.revealGrace
+      ? `\n\n⚠️ <b>Vaqt tugadi!</b> Ochmaganlar ${KICK_GRACE_SEC} soniyada ochmasa, o'yindan chiqariladi.`
+      : '';
+    body = `📂 <b>${g.step}-karta ochiladi</b>\nHar kim botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi.\n\n${list}\n\nOchganlar: <b>${done}/${alive(g).length}</b>${warn}`;
     rows = [[Markup.button.url('🪪 Kartamni ochish', `https://t.me/${BOT_USERNAME}`)]];
   } else if (g.phase === 'discuss') {
     const first = g.step === 1;
@@ -1429,6 +1438,7 @@ async function startRound(g) {
 async function startReveal(g) {
   if (g.finished) return;
   g.roundRevealed = new Set();
+  g.revealGrace = false;
   newPhase(g, 'reveal');
   const need = [];
   for (const p of alive(g)) {
@@ -1437,7 +1447,7 @@ async function startReveal(g) {
     else need.push(p);
   }
   if (!need.length) return endReveal(g);
-  setTimer(g, REVEAL_SEC, endReveal);
+  setTimer(g, REVEAL_SEC, revealTimeout);
   await liveOpen(g);
   for (const p of need) {
     if (g.finished || g.phase !== 'reveal') break; // vaqt tugab bo'lgan bo'lsa eskirgan karta yubormaymiz
@@ -1463,8 +1473,60 @@ async function revealAttr(g, userId, key) {
   return { ok: true, text: 'Ochildi!' };
 }
 
+// Karta ochish vaqti tugadi. Ochmaganlar bo'lsa: guruhga ogohlantirish, KICK_GRACE_SEC soniya oxirgi imkoniyat
+async function revealTimeout(g) {
+  if (g.finished || g.phase !== 'reveal') return;
+  const late = alive(g).filter((p) => !g.roundRevealed.has(p.id));
+  if (!late.length || !ensureSettings().kickAfk) return endReveal(g);
+  g.revealGrace = true;
+  setTimer(g, KICK_GRACE_SEC, revealKick);
+  liveRefresh(g);
+  await say(
+    g.chatId,
+    `⏰ ${late.map((p) => p.name).join(', ')}, kartangizni oching! Hamma sizni kutyapti.\n⚠️ ${KICK_GRACE_SEC} soniyada ochmasangiz, o'yindan chiqarilasiz.`
+  );
+  for (const p of late) {
+    if (g.finished || g.phase !== 'reveal') break;
+    await say(p.id, `⏰ Vaqt tugadi! ${KICK_GRACE_SEC} soniyada yuqoridagi kartangizdan bitta xususiyatni oching, aks holda o'yindan chiqarilasiz.`);
+  }
+}
+
+// Oxirgi imkoniyatdan keyin ham ochmaganlar o'yindan chiqariladi, o'yin davom etadi
+async function revealKick(g) {
+  if (g.finished || g.phase !== 'reveal') return;
+  const late = alive(g).filter((p) => !g.roundRevealed.has(p.id));
+  if (!late.length) return endReveal(g);
+  g.revealGrace = false;
+  for (const p of late) {
+    p.alive = false;
+    p.kicked = true; // kartasi o'yin oxirida ochiladi
+    g.eliminated.push(p);
+  }
+  DB.kickedAfk = (DB.kickedAfk || 0) + late.length;
+  saveSoon();
+  let text = late.map((p) => `🚪 ${p.name} o'yindan chiqdi (vaqtida karta ochmadi). O'yin davom etadi.`).join('\n');
+  // xona egasi chiqib ketsa, adminlik birinchi qo'shilgan tirik o'yinchiga o'tadi
+  if (late.some((p) => p.id === g.hostId)) {
+    const next = g.players.find((p) => p.alive);
+    if (next) {
+      g.hostId = next.id;
+      text += `\n\n👑 Xona egasi chiqib ketdi. Endi xona egasi: ${next.name}`;
+    }
+  }
+  await say(g.chatId, text);
+  for (const p of late) await say(p.id, `🚪 Siz vaqtida karta ochmadingiz va o'yindan chiqarildingiz. Kartangiz o'yin oxirida hammaga ochiladi.`);
+  if (g.finished) return;
+  if (alive(g).length <= g.capacity) {
+    newPhase(g, 'summary');
+    await liveRetire(g);
+    return finishGame(g);
+  }
+  return endReveal(g);
+}
+
 async function endReveal(g) {
   if (g.finished || g.phase !== 'reveal') return;
+  g.revealGrace = false;
   newPhase(g, 'summary');
   await liveRetire(g);
   // Vaqtida tanlamaganlar uchun karta o'zi ochilmaydi, shunchaki o'tkazib yuboriladi
@@ -1618,14 +1680,29 @@ async function finishGame(g) {
     .map((p) => `👤 ${p.name}\n` + ATTRS.map((a) => `   ${attrLine(p.card, a)}`).join('\n'))
     .join('\n\n');
   const outText = g.eliminated.length
-    ? g.eliminated.map((p, i) => `${i + 1}. ${p.name} (${p.card.job})`).join('\n')
+    ? g.eliminated.map((p, i) => `${i + 1}. ${p.name} (${p.card.job})${p.kicked ? ' 🚪 karta ochmay chiqib ketdi' : ''}`).join('\n')
     : 'Hech kim';
-  await sayPhoto(g.chatId, 'win', `🏁 O'YIN TUGADI!\n\n🏆 BUNKERGA KIRGANLAR: ${winners.map((p) => p.name).join(', ')}`);
+  const winNames = winners.length ? winners.map((p) => p.name).join(', ') : 'hech kim';
+  await sayPhoto(g.chatId, 'win', `🏁 O'YIN TUGADI!\n\n🏆 BUNKERGA KIRGANLAR: ${winNames}`);
   await say(
     g.chatId,
-    `☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
+    `☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText || 'Hech kim'}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
     Markup.inlineKeyboard([[Markup.button.url('➕ Botni boshqa guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)]])
   );
+  // karta ochmay chiqib ketganlarning kartasi o'yin oxirida ochiladi (xabar uzun bo'lsa bo'laklarga bo'linadi)
+  const kicked = g.eliminated.filter((p) => p.kicked);
+  if (kicked.length) {
+    const blocks = kicked.map((p) => `👤 ${p.name}\n` + ATTRS.map((a) => `   ${attrLine(p.card, a)}`).join('\n'));
+    let chunk = '🚪 Karta ochmay chiqib ketganlarning kartasi:';
+    for (const b of blocks) {
+      if (chunk.length + b.length + 2 > 3800) {
+        await say(g.chatId, chunk);
+        chunk = '';
+      }
+      chunk += (chunk ? '\n\n' : '') + b;
+    }
+    if (chunk) await say(g.chatId, chunk);
+  }
 }
 
 // ---------- BUYRUQLAR ----------
@@ -1676,7 +1753,7 @@ Har raund shunday o'tadi:
 4️⃣ Muhokama (${DISCUSS2_SEC} soniya)
 5️⃣ Ovoz berish (${VOTE_SEC} soniya), bitta o'yinchi haydaladi
 
-⏰ Vaqtida karta ochmasangiz, o'tkazib yuboriladi va boshqalar sizdan gumon qiladi.
+⏰ Karta ochish vaqti tugasa, guruhga ogohlantirish chiqadi. Yana ${KICK_GRACE_SEC} soniyada ham ochmasangiz, o'yindan chiqarilasiz (kartangiz o'yin oxirida ochiladi).
 
 ⚡ Hamma karta ochsa yoki hamma ovoz bersa, vaqt kutilmaydi.
 ♾ 8 ta xususiyat 4 raundga yetadi. Hamma kartasi ochilgach, raundlar faqat muhokama va ovozdan iborat bo'ladi.`,
@@ -1911,4 +1988,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };

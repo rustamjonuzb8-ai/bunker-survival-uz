@@ -228,6 +228,7 @@ function reset() {
   DB.settings = undefined;
   DB.gamesStarted = 0;
   DB.gamesFinished = 0;
+  DB.kickedAfk = 0;
   server._admin.ensureSettings();
   server._admin.applySettings();
   Object.keys(server.games).forEach((k) => delete server.games[k]);

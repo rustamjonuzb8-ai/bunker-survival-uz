@@ -399,7 +399,7 @@ test('sozlamalar: tugmasi bor har bir qiymat ishlaydi, asl holiga qaytarish', as
     assert.equal(A.getSetting(d.key), Math.min(d.max, def + d.step), d.key);
   }
   await H.adminClick('adm_s_reset');
-  assert.deepEqual(A.getLimits(), { MIN_PLAYERS: 4, REVEAL_SEC: 60, DISCUSS1_SEC: 90, DISCUSS2_SEC: 80, VOTE_SEC: 45, REVOTE_SEC: 30, BETWEEN_SEC: 4 });
+  assert.deepEqual(A.getLimits(), { MIN_PLAYERS: 4, REVEAL_SEC: 60, DISCUSS1_SEC: 90, DISCUSS2_SEC: 80, VOTE_SEC: 45, REVOTE_SEC: 30, BETWEEN_SEC: 4, KICK_GRACE_SEC: 10 });
 });
 
 test('sozlamalar: saqlanadi va qayta ishga tushganda tiklanadi', async () => {
