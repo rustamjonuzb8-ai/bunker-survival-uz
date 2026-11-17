@@ -22,7 +22,7 @@ const Markup = {
   }
 };
 
-const world = { chats: {}, sent: [], left: [], edits: [], deleted: [], msgSeq: 100, linkSeq: 0, blocked: new Set(), editFail: null, deleteFail: false };
+const world = { chats: {}, sent: [], left: [], edits: [], deleted: [], photos: [], photoFail: false, msgSeq: 100, linkSeq: 0, blocked: new Set(), editFail: null, deleteFail: false };
 const apiError = (code, msg) => Object.assign(new Error(msg), { response: { error_code: code, description: msg } });
 
 const telegram = {
@@ -31,6 +31,14 @@ const telegram = {
     const mid = ++world.msgSeq;
     world.sent.push({ id, text, extra, mid });
     return { message_id: mid };
+  },
+  async sendPhoto(id, src, extra) {
+    if (world.photoFail) throw apiError(400, 'Bad Request: wrong file identifier');
+    const mid = ++world.msgSeq;
+    const isFile = typeof src === 'object';
+    if (isFile && src.source && src.source.destroy) src.source.destroy();
+    world.photos.push({ id, name: isFile ? src.filename : null, fileId: isFile ? null : src, caption: extra && extra.caption, mid });
+    return { message_id: mid, photo: [{ file_id: 'FID' + mid }] };
   },
   async editMessageText(chatId, msgId, inline, text, extra) {
     world.edits.push({ chatId, msgId, text, extra });
@@ -228,6 +236,8 @@ function reset() {
   world.sent.length = 0;
   world.left.length = 0;
   world.edits.length = 0;
+  world.photos.length = 0;
+  world.photoFail = false;
   world.deleted.length = 0;
   world.editFail = null;
   world.deleteFail = false;

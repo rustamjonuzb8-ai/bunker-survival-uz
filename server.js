@@ -29,6 +29,7 @@ const chatGame = {};  // chatId -> kod
 
 // ---------- STATISTIKA VA ADMIN PANEL ----------
 const fs = require('fs');
+const path = require('path');
 const ADMIN_ID = Number(process.env.ADMIN_ID || 0);
 const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_KEY = process.env.SUPABASE_KEY || '';
@@ -971,6 +972,7 @@ const SECRETS = [
   "Yashirin xizmatda ishlagan (ko'p sir biladi, lekin hammaga xavfli)",
   "Boshqa odamning hujjati bilan yashaydi"
 ];
+const OUT_IMAGES = 3; // assets/out_0..out_2
 const DISASTERS = [
   "Yadro urushi: tashqarida zaharli nur, 5 yil yashash kerak",
   "Zombi kasalligi: shaharlar vayron bo'ldi",
@@ -1063,6 +1065,35 @@ async function edit(chatId, msgId, text, extra) {
   try {
     await bot.telegram.editMessageText(chatId, msgId, undefined, text, extra);
   } catch (e) {}
+}
+
+// ---------- RASMLAR ----------
+// assets/ papkasidagi rasmlar to'g'ridan-to'g'ri fayldan yuboriladi (internet manzili kerak emas).
+// Birinchi yuborishdan keyin Telegram bergan file_id eslab qolinadi: keyingi safar qayta yuklanmaydi.
+const ASSET_DIR = path.join(__dirname, 'assets');
+const photoIds = {};
+const PHOTO_CAPTION_MAX = 1000; // Telegram limiti 1024 belgi
+// Rasm bilan yuboradi; rasm bo'lmasa, juda uzun bo'lsa yoki yuborilmasa oddiy matn sifatida yuboradi (o'yin to'xtamaydi)
+async function sayPhoto(chatId, name, caption, extra) {
+  const file = path.join(ASSET_DIR, name + '.jpg');
+  if (caption.length <= PHOTO_CAPTION_MAX && fs.existsSync(file)) {
+    let stream = null;
+    try {
+      let src = photoIds[name];
+      if (!src) {
+        stream = fs.createReadStream(file);
+        src = { source: stream, filename: name + '.jpg' };
+      }
+      const m = await bot.telegram.sendPhoto(chatId, src, Object.assign({ caption }, extra));
+      if (!photoIds[name] && m && m.photo && m.photo.length) photoIds[name] = m.photo[m.photo.length - 1].file_id;
+      return m;
+    } catch (e) {
+      console.log('rasm yuborilmadi:', e && e.message);
+      delete photoIds[name]; // file_id eskirgan bo'lishi mumkin: keyingi safar fayldan yuboriladi
+      if (stream) stream.destroy();
+    }
+  }
+  return say(chatId, caption, extra);
 }
 
 // ---------- O'YIN YORDAMCHILARI ----------
@@ -1358,7 +1389,8 @@ function revealKeyboard(g, p) {
 async function beginGame(g) {
   if (g.finished) return;
   g.started = true;
-  g.disaster = pick(DISASTERS);
+  g.disasterIdx = Math.floor(Math.random() * DISASTERS.length);
+  g.disaster = DISASTERS[g.disasterIdx];
   g.capacity = WINNERS;
   const draws = makeDraws();
   g.players.forEach((p) => {
@@ -1370,8 +1402,9 @@ async function beginGame(g) {
   });
   recordGameStart(g);
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
-  await say(
+  await sayPhoto(
     g.chatId,
+    `disaster_${g.disasterIdx}`,
     `🛡 O'YIN BOSHLANDI!\n\n☢️ Falokat: ${g.disaster}\n\n🚪 Bunkerda joy: ${g.capacity} kishi\n👥 O'yinchilar: ${g.players.length}\n\nOxirida faqat ${g.capacity} kishi bunkerga kiradi. Har raundda bitta o'yinchi haydaladi.`
   );
   await startRound(g);
@@ -1558,11 +1591,18 @@ async function endVote(g) {
 
   const fullCard = ATTRS.map((a) => attrLine(out.card, a)).join('\n');
   const last = alive(g).length <= g.capacity;
-  await say(
-    g.chatId,
-    `📊 OVOZ NATIJASI\n\n${results}\n${note ? '\n' + note + '\n' : ''}\n☠️ BUNKERDAN HAYDALDI: ${out.name}\n\n🪪 Uning to'liq kartasi:\n${fullCard}` +
-      (last ? '' : `\n\n⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`)
-  );
+  const head = `📊 OVOZ NATIJASI\n\n${results}\n${note ? '\n' + note + '\n' : ''}\n☠️ BUNKERDAN HAYDALDI: ${out.name}`;
+  const tail = `🪪 Uning to'liq kartasi:\n${fullCard}` + (last ? '' : `\n\n⏳ Keyingi raund ${BETWEEN_SEC} soniyadan keyin boshlanadi...`);
+  const img = `out_${Math.floor(Math.random() * OUT_IMAGES)}`;
+  if (head.length <= PHOTO_CAPTION_MAX) {
+    // rasm ostida natija, keyingi xabarda haydalganning kartasi
+    await sayPhoto(g.chatId, img, head);
+    await say(g.chatId, tail);
+  } else {
+    // natija rasm ostiga sig'masa (ko'p o'yinchi): rasm qisqa, natija alohida xabarda
+    await sayPhoto(g.chatId, img, `☠️ BUNKERDAN HAYDALDI: ${out.name}`);
+    await say(g.chatId, `${head}\n\n${tail}`);
+  }
   await say(out.id, '☠️ Siz bunkerdan haydaldingiz. Guruhda o\'yinni kuzatishda davom eting.');
 
   if (last) return finishGame(g);
@@ -1580,9 +1620,10 @@ async function finishGame(g) {
   const outText = g.eliminated.length
     ? g.eliminated.map((p, i) => `${i + 1}. ${p.name} (${p.card.job})`).join('\n')
     : 'Hech kim';
+  await sayPhoto(g.chatId, 'win', `🏁 O'YIN TUGADI!\n\n🏆 BUNKERGA KIRGANLAR: ${winners.map((p) => p.name).join(', ')}`);
   await say(
     g.chatId,
-    `🏁 O'YIN TUGADI!\n\n☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
+    `☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
     Markup.inlineKeyboard([[Markup.button.url('➕ Botni boshqa guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)]])
   );
 }
@@ -1870,4 +1911,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { _game: { liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };

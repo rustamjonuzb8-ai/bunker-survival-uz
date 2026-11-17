@@ -8,6 +8,7 @@ const A = server._admin;
 const T0 = 1_700_000_000_000;
 test.beforeEach(() => {
   H.reset();
+  Object.keys(G.photoIds).forEach((k) => delete G.photoIds[k]);
   test.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 });
 });
 test.afterEach(() => {
@@ -21,6 +22,9 @@ const advance = async (ms) => {
   await H.flush();
 };
 const groupMsgs = () => world.sent.filter((m) => m.id === CHAT);
+// guruhdagi barcha matnlar: oddiy xabarlar va rasm tagidagi yozuvlar
+const groupTexts = () => [...groupMsgs().map((m) => m.text), ...world.photos.filter((x) => x.id === CHAT).map((x) => x.caption)];
+const findGroup = (re) => groupTexts().find((t) => re.test(t));
 const liveMsgs = () => groupMsgs().filter((m) => m.text.startsWith('🛡 <b>BUNKER</b>'));
 const dms = (uid) => world.sent.filter((m) => m.id === uid);
 
@@ -64,7 +68,7 @@ test('hech kim hech narsa qilmasa ham o\'yin o\'zi tugaydi; vaqt hisobi to\'g\'r
   assert.equal(g.players.filter((p) => p.alive).length, 2);
   // raund: 60 (ochish) + 90 + 60 + 80 + 45 (ovoz) + 4 (oraliq) = 339 s; oxirgisida oraliq yo'q: 339 + 335 = 674 s
   assert.ok(sec >= 674 && sec <= 676, 'vaqt: ' + sec);
-  assert.ok(groupMsgs().some((m) => /O'YIN TUGADI/.test(m.text)));
+  assert.ok(findGroup(/O'YIN TUGADI/));
   assert.equal(A.getDB().gamesFinished, 1);
 });
 
@@ -243,10 +247,10 @@ test('teng ovoz: qayta ovoz, keyin ko\'p ovoz olgan haydaladi; hisoblar to\'g\'r
   await advance(500);
   assert.equal(g.eliminated.length, 1);
   assert.equal(g.eliminated[0].id, p1.id);
-  const res = groupMsgs().find((m) => /OVOZ NATIJASI/.test(m.text));
-  assert.match(res.text, /P1: 2 ovoz/); // birinchi ovoz hisobi ko'rsatiladi
-  assert.match(res.text, /BUNKERDAN HAYDALDI: P1/);
-  assert.match(res.text, /Keyingi raund 4 soniyadan/);
+  const res = findGroup(/OVOZ NATIJASI/);
+  assert.match(res, /P1: 2 ovoz/); // birinchi ovoz hisobi ko'rsatiladi
+  assert.match(res, /BUNKERDAN HAYDALDI: P1/);
+  assert.ok(findGroup(/Keyingi raund 4 soniyadan/));
   assert.equal(g.players[0].votesAgainst, 2); // faqat birinchi ovoz hisoblanadi
   // haydalgan ovoz bera olmaydi
   g.phase = 'vote';
@@ -261,9 +265,9 @@ test('hech kim ovoz bermasa: tasodif bilan haydaladi va sababi to\'g\'ri yozilad
   await G.startVote(g);
   await advance(45000);
   assert.equal(g.eliminated.length, 1);
-  const res = groupMsgs().find((m) => /OVOZ NATIJASI/.test(m.text));
-  assert.match(res.text, /Hech kim ovoz bermadi, shuning uchun tasodif/);
-  assert.doesNotMatch(res.text, /Qayta ovozda/);
+  const res = findGroup(/OVOZ NATIJASI/);
+  assert.match(res, /Hech kim ovoz bermadi, shuning uchun tasodif/);
+  assert.doesNotMatch(res, /Qayta ovozda/);
 });
 
 test('ovoz berilgach vaqt kutilmaydi; haydalganda jonli xabar olib tashlanadi', async () => {
@@ -303,7 +307,7 @@ test('"Boshlash" ikki marta tez bosilsa o\'yin bir marta boshlanadi', async () =
   await Promise.all([H.click(host, 'start_' + g.code, group()), H.click(host, 'start_' + g.code, group())]);
   await H.flush();
   assert.equal(A.getDB().gamesStarted, 1);
-  assert.equal(groupMsgs().filter((m) => /O'YIN BOSHLANDI/.test(m.text)).length, 1);
+  assert.equal(groupTexts().filter((t) => /O'YIN BOSHLANDI/.test(t)).length, 1);
   assert.equal(liveMsgs().length, 1);
 });
 
@@ -452,4 +456,104 @@ test('kartalar: bir o\'yinda takrorlanmaydi (12 o\'yinchigacha)', async () => {
   const late = H.user(2999, 'Kech');
   const ctx = await H.say(late, '/start join_' + xs.g.code, H.privateChat(late.id));
   assert.match(ctx.replies[0].text, /boshlangan/);
+});
+
+// ---------- rasmlar ----------
+const fs = require('fs');
+const path = require('path');
+
+test('rasm fayllari bor va falokat rasmlari DISASTERS bilan bir xil tartibda', () => {
+  for (let i = 0; i < G.DISASTERS.length; i++) assert.ok(fs.existsSync(path.join(G.ASSET_DIR, `disaster_${i}.jpg`)), `disaster_${i}.jpg`);
+  for (let i = 0; i < G.OUT_IMAGES; i++) assert.ok(fs.existsSync(path.join(G.ASSET_DIR, `out_${i}.jpg`)), `out_${i}.jpg`);
+  assert.ok(fs.existsSync(path.join(G.ASSET_DIR, 'win.jpg')));
+  // rasm yaratuvchi dasturdagi sarlavhalar tartibi o'yindagi falokatlar bilan mos kelishi shart
+  const src = fs.readFileSync(path.join(__dirname, '..', 'tools', 'make-images.js'), 'utf8');
+  const titles = [...src.matchAll(/file: 'disaster_(\d+)', icon: '[^']*', title: '((?:[^'\\]|\\.)*)'/g)].sort((a, b) => a[1] - b[1]).map((m) => m[2]);
+  assert.equal(titles.length, G.DISASTERS.length);
+  titles.forEach((t, i) => {
+    const name = G.DISASTERS[i].split(':')[0].toLowerCase();
+    assert.equal(t.toLowerCase().replace(/\\'/g, "'"), name, `${i}-falokat rasmi mos emas`);
+  });
+  // rasmlar Telegram uchun yetarli kichik
+  for (const f of fs.readdirSync(G.ASSET_DIR)) assert.ok(fs.statSync(path.join(G.ASSET_DIR, f)).size < 1_000_000, f);
+});
+
+test('o\'yin boshida falokat rasmi yuboriladi, keyingi safar file_id ishlatiladi', async () => {
+  const { g } = await startGame(4);
+  assert.equal(world.photos.length, 1);
+  assert.equal(world.photos[0].name, `disaster_${g.disasterIdx}.jpg`);
+  assert.match(world.photos[0].caption, /O'YIN BOSHLANDI/);
+  assert.ok(world.photos[0].caption.includes(g.disaster));
+  assert.equal(G.photoIds[`disaster_${g.disasterIdx}`], 'FID' + world.photos[0].mid);
+  // matnli dublikat chiqmaydi
+  assert.equal(groupMsgs().filter((m) => /O'YIN BOSHLANDI/.test(m.text)).length, 0);
+  // xuddi shu rasm qayta yuborilsa, fayl emas file_id ketadi
+  await G.sayPhoto(CHAT, `disaster_${g.disasterIdx}`, 'sinov');
+  assert.equal(world.photos[1].fileId, 'FID' + world.photos[0].mid);
+  assert.equal(world.photos[1].name, null);
+});
+
+test('haydalganda rasm ostida natija, keyingi xabarda karta; oxirida g\'alaba rasmi', async () => {
+  const { g } = await startGame(4);
+  await idle(g);
+  const outs = world.photos.filter((x) => /^out_\d\.jpg$/.test(x.name || '') || x.fileId);
+  assert.equal(outs.length >= 2, true);
+  const out1 = world.photos.find((x) => x.caption && /OVOZ NATIJASI/.test(x.caption));
+  assert.match(out1.caption, /BUNKERDAN HAYDALDI/);
+  assert.ok(groupMsgs().some((m) => /Uning to'liq kartasi/.test(m.text) && /Keyingi raund/.test(m.text)));
+  const win = world.photos.find((x) => x.caption && /O'YIN TUGADI/.test(x.caption));
+  assert.ok(win && /BUNKERGA KIRGANLAR: /.test(win.caption));
+  const fin = groupMsgs().find((m) => /BUNKERGA KIRGANLAR \(omon qoldi\)/.test(m.text));
+  assert.ok(fin, 'g\'oliblar kartalari matn bilan chiqadi');
+  assert.ok(H.buttonsOf(fin).length >= 1, 'pastdagi tugma saqlangan');
+  // oxirgi raundda "keyingi raund" yozuvi yo'q
+  const lastCard = groupMsgs().filter((m) => /Uning to'liq kartasi/.test(m.text)).pop();
+  assert.doesNotMatch(lastCard.text, /Keyingi raund/);
+});
+
+test('natija rasm ostiga sig\'masa (juda uzun ismlar): rasm qisqa, natija alohida xabarda', async () => {
+  const { g, users } = await startGame(4);
+  g.players.forEach((p, i) => (p.name = String.fromCharCode(65 + i).repeat(400)));
+  g.step = 2;
+  g.phase = 'discuss';
+  await G.startVote(g);
+  for (const u of users.slice(0, 3)) await vote(g, u, users[3]);
+  await vote(g, users[3], users[0]);
+  await advance(500);
+  const photo = world.photos.find((x) => /BUNKERDAN HAYDALDI/.test(x.caption || '') && !/OVOZ NATIJASI/.test(x.caption));
+  assert.ok(photo, 'qisqa sarlavhali rasm');
+  assert.ok(photo.caption.length <= 1000);
+  assert.ok(groupMsgs().some((m) => /OVOZ NATIJASI/.test(m.text)), 'natija alohida xabarda');
+});
+
+test('rasm yuborilmasa o\'yin to\'xtamaydi: matn sifatida chiqadi', async () => {
+  world.photoFail = true;
+  const { g } = await startGame(4);
+  assert.equal(world.photos.length, 0);
+  assert.ok(groupMsgs().some((m) => /O'YIN BOSHLANDI/.test(m.text)), 'matnli zaxira');
+  assert.equal(liveMsgs().length, 1);
+  await idle(g);
+  assert.equal(g.finished, true);
+  assert.ok(groupMsgs().some((m) => /OVOZ NATIJASI/.test(m.text)));
+  assert.ok(groupMsgs().some((m) => /O'YIN TUGADI/.test(m.text)));
+  assert.deepEqual(Object.keys(G.photoIds), [], 'xato bo\'lsa file_id eslab qolinmaydi');
+});
+
+test('eskirgan file_id xato bersa, keyingi safar fayldan yuboriladi', async () => {
+  const name = 'win';
+  G.photoIds[name] = 'ESKIRGAN';
+  world.photoFail = true;
+  await G.sayPhoto(CHAT, name, 'matn');
+  assert.equal(G.photoIds[name], undefined);
+  assert.ok(groupMsgs().some((m) => m.text === 'matn'));
+  world.photoFail = false;
+  await G.sayPhoto(CHAT, name, 'matn2');
+  assert.equal(world.photos[0].name, 'win.jpg');
+});
+
+test('mavjud bo\'lmagan rasm yoki juda uzun matn: oddiy xabar', async () => {
+  await G.sayPhoto(CHAT, 'yoq-rasm', 'salom');
+  await G.sayPhoto(CHAT, 'win', 'x'.repeat(1001));
+  assert.equal(world.photos.length, 0);
+  assert.equal(groupMsgs().length, 2);
 });
