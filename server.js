@@ -1,4 +1,6 @@
 const express = require('express');
+const { packRoom, unpackRoom } = require('./room-state');
+const { observePolling } = require('./polling-health');
 const { Telegraf, Markup } = require('telegraf');
 
 const TOKEN = process.env.BOT_TOKEN;
@@ -118,49 +120,78 @@ async function loadDB() {
   applySettings();
 }
 async function loadDBRaw() {
+  const local = fs.existsSync(DATA_FILE) ? JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) : null;
+  let saved = local;
   if (useSb()) {
-    try {
-      const r = await fetch(`${SB_URL}/rest/v1/store?id=eq.main&select=data`, { headers: sbHeaders() });
-      if (r.ok) {
-        const rows = await r.json();
-        if (rows[0] && rows[0].data) {
-          DB = Object.assign(DB, rows[0].data);
-          console.log('Statistika Supabase\'dan yuklandi');
-          return;
-        }
-      } else {
-        console.log('Supabase o\'qish xatosi:', r.status);
-      }
-    } catch (e) {
-      console.log('Supabase o\'qish xatosi:', e.message);
-    }
+    const r = await fetch(`${SB_URL}/rest/v1/store?id=eq.main&select=data`, { headers: sbHeaders(), signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error('Supabase: ' + r.status);
+    const remote = (await r.json())[0]?.data;
+    if (remote && (!local || (remote.savedAt || 0) >= (local.savedAt || 0))) saved = remote;
   }
-  try {
-    if (fs.existsSync(DATA_FILE)) DB = Object.assign(DB, JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')));
-  } catch (e) {
-    console.log('Fayl o\'qish xatosi:', e.message);
-  }
+  if (saved) Object.assign(DB, saved);
 }
 function saveSoon() {
   if (saveTimer) return;
-  saveTimer = setTimeout(saveNow, 3000);
-  if (saveTimer.unref) saveTimer.unref();
+  saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 3000);
+  saveTimer.unref?.();
 }
-async function saveNow() {
-  saveTimer = null;
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(DB));
-  } catch (e) {}
-  if (useSb()) {
+let pendingRemote = null;
+let remoteWriter = null;
+async function flushRemote() {
+  while (pendingRemote) {
+    const body = pendingRemote;
+    pendingRemote = null;
     try {
       const r = await fetch(`${SB_URL}/rest/v1/store?on_conflict=id`, {
-        method: 'POST',
-        headers: Object.assign({}, sbHeaders(), { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }),
-        body: JSON.stringify([{ id: 'main', data: DB }])
+        method: 'POST', signal: AbortSignal.timeout(15000),
+        headers: { ...sbHeaders(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+        body
       });
-      if (!r.ok) console.log('Supabase yozish xatosi:', r.status, await r.text());
+      if (!r.ok) throw new Error('HTTP ' + r.status);
     } catch (e) {
       console.log('Supabase yozish xatosi:', e.message);
+      saveSoon();
+      break;
+    }
+  }
+}
+function saveNow() {
+  DB.savedAt = Math.max(Date.now(), (DB.savedAt || 0) + 1);
+  const json = JSON.stringify(DB);
+  try {
+    fs.writeFileSync(DATA_FILE + '.tmp', json, { mode: 0o600 });
+    fs.renameSync(DATA_FILE + '.tmp', DATA_FILE);
+  } catch (e) { console.error('Fayl yozish xatosi:', e.message); }
+  if (!useSb()) return;
+  pendingRemote = '[{"id":"main","data":' + json + '}]';
+  if (!remoteWriter) remoteWriter = flushRemote().finally(() => { remoteWriter = null; });
+  return remoteWriter;
+}
+
+function checkpoint(g) {
+  DB.rooms ||= {};
+  if (g.finished) delete DB.rooms[g.code];
+  else DB.rooms[g.code] = packRoom(g);
+  saveNow();
+}
+
+// Resume the same phase with its full time allowance so downtime cannot eliminate a player.
+async function restoreRooms() {
+  for (const saved of Object.values(DB.rooms || {})) {
+    const g = unpackRoom(saved);
+    games[g.code] = g;
+    chatGame[g.chatId] = g.code;
+    if (!g.started) continue;
+    const callbacks = { reveal: g.revealGrace ? revealKick : revealTimeout,
+      discuss: afterDiscuss, vote: endVote, between: startRound };
+    setTimer(g, g.phaseSec, callbacks[g.phase]);
+    if (g.phase === 'between') continue;
+    await liveOpen(g);
+    if (g.phase === 'reveal') {
+      for (const p of alive(g).filter(p => !g.roundRevealed.has(p.id))) {
+        if (g.phase !== 'reveal' || g.finished) break;
+        await say(p.id, cardText(g, p, true), revealKeyboard(g, p));
+      }
     }
   }
 }
@@ -1131,10 +1162,12 @@ function setTimer(g, sec, fn) {
       .then(() => fn(g))
       .catch((e) => console.log('taymer xatosi:', e && e.message));
   }, sec * 1000);
+  checkpoint(g);
 }
 function closeGame(g) {
   g.finished = true;
   g.phase = 'ended';
+  checkpoint(g);
   g.phaseId++;
   clearTimeout(g.timer);
   g.deadline = null;
@@ -1337,6 +1370,7 @@ function createRoom(chatId, hostId) {
   };
   games[code] = g;
   chatGame[chatId] = code;
+  checkpoint(g);
   return g;
 }
 
@@ -1346,6 +1380,7 @@ function joinPlayer(g, id, name) {
   if (findPlayer(g, id)) return { ok: false, text: 'Siz allaqachon qo\'shilgansiz. Guruhga qayting.' };
   if (g.players.length >= MAX_PLAYERS) return { ok: false, text: 'Xona to\'lgan.' };
   g.players.push({ id, name, card: null, revealed: [], alive: true, votesAgainst: 0 });
+  checkpoint(g);
   return { ok: true, text: '✅ Siz xonaga qo\'shildingiz. Guruhga qayting, o\'yin boshlanganda karta shu yerga keladi.' };
 }
 
@@ -1467,6 +1502,7 @@ async function revealAttr(g, userId, key) {
   p.revealed.push(key);
   p.fresh = key;
   g.roundRevealed.add(p.id);
+  checkpoint(g);
   liveRefresh(g);
   if (alive(g).every((x) => g.roundRevealed.has(x.id))) {
     later(500, () => endReveal(g));
@@ -1693,6 +1729,7 @@ async function castVote(g, voterId, targetId) {
   }
   if (voterId === targetId) return { ok: false, text: 'O\'zingizga ovoz bera olmaysiz.' };
   g.votes.set(voterId, targetId);
+  checkpoint(g);
   liveRefresh(g);
   if (g.votes.size >= voters(g).length) later(500, () => endVote(g));
   return { ok: true, text: `Ovoz qabul qilindi: ${target.name}` };
@@ -1752,6 +1789,8 @@ async function endVote(g) {
   g.eliminated.push(out);
   const fxText = fxSummary(g);
   g.fx = newFx();
+  g.phaseSec = BETWEEN_SEC;
+  checkpoint(g);
 
   const fullCard = ATTRS.map((a) => attrLine(out.card, a)).join('\n');
   const last = alive(g).length <= g.capacity;
@@ -1953,6 +1992,7 @@ bot.command('bunker', async (ctx) => {
     const m = await ctx.reply(lobbyText(old), lobbyKeyboard(old));
     const prev = old.msgId;
     old.msgId = m.message_id;
+    checkpoint(old);
     if (prev) {
       try {
         await ctx.telegram.deleteMessage(ctx.chat.id, prev);
@@ -1964,6 +2004,7 @@ bot.command('bunker', async (ctx) => {
   g.chatUsername = ctx.chat.username || null;
   const msg = await ctx.reply(lobbyText(g), lobbyKeyboard(g));
   g.msgId = msg.message_id;
+  checkpoint(g);
 });
 
 // xona egasi yoki guruh adminimi?
@@ -2054,6 +2095,7 @@ bot.action(/^ready_([A-Z0-9]+)$/, async (ctx) => {
   const on = !g.ready.has(p.id);
   if (on) g.ready.add(p.id);
   else g.ready.delete(p.id);
+  checkpoint(g);
   await ctx.answerCbQuery(on ? 'Siz tayyorsiz ✅' : 'Tayyorlik bekor qilindi');
   if (g.finished || g.phase !== 'discuss') return;
   if (g.ready.size >= readyNeed(g)) return afterDiscuss(g);
@@ -2095,6 +2137,7 @@ bot.action(/^pw_([A-Z0-9]+)$/, async (ctx) => {
 
 async function finishPower(ctx, g, arg) {
   const r = usePower(g, ctx.from.id, arg);
+  if (r.ok) checkpoint(g);
   await ctx.answerCbQuery(r.ok ? 'Bajarildi ✅' : r.text, { show_alert: !r.ok });
   if (!r.ok) return;
   try {
@@ -2130,40 +2173,54 @@ bot.catch((err) => console.log('Xato:', err.message));
 // ---------- ISHGA TUSHIRISH ----------
 if (require.main === module) {
   const app = express();
-  app.get('/', (req, res) => res.send('BUNKER bot ishlayapti'));
-  app.listen(process.env.PORT || 3000);
-
-  // Telegram bilan aloqa uzilsa (masalan ECONNRESET), bot o'chib qolmasligi uchun qayta urinadi
+  let restored = false;
+  let loaded = false;
   let stopping = false;
+  const health = observePolling(bot.telegram, async () => {
+    if (!restored) {
+      await restoreRooms();
+      restored = true;
+    }
+  });
+  app.get(['/', '/health'], (req, res) => {
+    const ready = !stopping && health.ready();
+    res.set('Cache-Control', 'no-store').status(ready ? 200 : 503)
+      .send(ready ? 'BUNKER bot ishlayapti' : TOKEN ? 'Telegram aloqasi tayyor emas' : 'BOT_TOKEN sozlanmagan');
+  });
+  const httpServer = app.listen(process.env.PORT || 3000);
+
   async function launchWithRetry() {
     for (let attempt = 1; !stopping; attempt++) {
       try {
-        await bot.launch({ dropPendingUpdates: true });
+        if (!loaded) {
+          await loadDB();
+          loaded = true;
+        }
+        if (stopping) return;
+        await bot.launch({ dropPendingUpdates: false });
         return;
       } catch (e) {
+        health.reset();
         if (stopping) return;
         const wait = Math.min(30000, 3000 * attempt);
-        console.log(`launch xatosi (${attempt}-urinish):`, e.message, `— ${wait / 1000} soniyadan keyin qayta uriniladi`);
-        await new Promise((r) => setTimeout(r, wait));
+        console.log('Bot ulanish yoki yuklash xatosi:', e.message);
+        await new Promise(r => { const t = setTimeout(r, wait); t.unref(); });
       }
     }
   }
-
-  loadDB()
-    .catch((e) => console.log('loadDB xatosi:', e.message))
-    .then(() => launchWithRetry());
-  // kutilmagan xato butun botni (va barcha o'yinlarni) to'xtatib qo'ymasligi uchun
-  process.on('unhandledRejection', (e) => console.log('Ushlanmagan xato:', e && e.message));
-  process.once('SIGINT', () => {
+  if (TOKEN) launchWithRetry();
+  function stop(signal) {
     stopping = true;
-    saveNow();
-    bot.stop('SIGINT');
-  });
-  process.once('SIGTERM', () => {
-    stopping = true;
-    saveNow();
-    bot.stop('SIGTERM');
-  });
+    httpServer.close();
+    for (const g of Object.values(games)) {
+      clearTimeout(g.timer);
+      liveStopTimers(g);
+    }
+    if (loaded) saveNow();
+    try { bot.stop(signal); } catch (_) { /* polling has not started yet */ }
+  }
+  process.once('SIGINT', () => stop('SIGINT'));
+  process.once('SIGTERM', () => stop('SIGTERM'));
 
   // Tugagan eski o'yinlarni tozalash
   setInterval(() => {
@@ -2174,7 +2231,7 @@ if (require.main === module) {
       if (!g.finished && now - g.createdAt > (g.started ? 6 : 3) * 3600 * 1000) closeGame(g);
       if (g.finished && now - g.createdAt > 3600 * 1000) delete games[code];
     }
-  }, 600 * 1000);
+  }, 600 * 1000).unref();
 }
 
-module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, usePower, weightedTally, newFx, POWER_INFO, ATTRS, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { restoreRooms, DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, usePower, weightedTally, newFx, POWER_INFO, ATTRS, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
