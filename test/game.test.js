@@ -676,3 +676,54 @@ test('kutish vaqti sozlamadan o\'zgaradi (admin paneldagi "Chiqarishdan oldin ku
   await advance(1000);
   assert.equal(findPlayerIn(g, users[3]).alive, false);
 });
+
+test('restart: xona, yashirin kartalar va ovoz tiklanadi, raund oxirigacha davom etadi', async () => {
+  const {g, users} = await startGame();
+  await allReveal(g, users, 'job');
+  await G.afterDiscuss(g);
+  await allReveal(g, users, 'health');
+  await G.afterDiscuss(g);
+  await vote(g, users[0], users[1]);
+  const card = {...g.players[0].card};
+  clearTimeout(g.timer);
+  clearInterval(g.ticker);
+  clearTimeout(g.liveTimer);
+  delete server.games[g.code];
+  delete server.chatGame[CHAT];
+  delete A.getDB().rooms;
+  await A.loadDB();
+  await G.restoreRooms();
+  const recovered = server.games[server.chatGame[CHAT]];
+  assert.equal(recovered.phase, 'vote');
+  assert.deepEqual(recovered.players[0].card, card);
+  assert.equal(recovered.votes.get(users[0].id), users[1].id);
+  assert.equal(recovered.roundRevealed.size, 4);
+  await vote(recovered, users[2], users[1]);
+  await advance(45000);
+  assert.equal(recovered.eliminated[0].id, users[1].id);
+  await advance(4000);
+  assert.equal(recovered.round, 2);
+  await H.say(users[0], '/stop', group());
+  assert.equal(A.getDB().rooms[g.code], undefined);
+});
+
+test('holat: faqat muvaffaqiyatli Telegram pollingidan so‘ng tayyor', async () => {
+  const { observePolling } = require('../polling-health');
+  let fail = false;
+  const telegram = { callApi: async () => {
+    if (fail) throw new Error('uzildi');
+    return [];
+  }};
+  const health = observePolling(telegram, async () => {});
+  assert.equal(health.ready(), false);
+  await telegram.callApi('getMe', {});
+  assert.equal(health.ready(), false);
+  await telegram.callApi('getUpdates', {timeout: 50});
+  assert.equal(health.ready(), true);
+  test.mock.timers.tick(76000);
+  assert.equal(health.ready(), false);
+  await telegram.callApi('getUpdates', {timeout: 50});
+  fail = true;
+  await assert.rejects(telegram.callApi('getUpdates', {timeout: 50}));
+  assert.equal(health.ready(), false);
+});

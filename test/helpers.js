@@ -230,6 +230,7 @@ const lastEdit = (ctx) => ctx.edits[ctx.edits.length - 1];
 function reset() {
   const DB = server._admin.getDB();
   DB.users = {};
+  DB.rooms = {};
   DB.chats = {};
   DB.settings = undefined;
   DB.gamesStarted = 0;
