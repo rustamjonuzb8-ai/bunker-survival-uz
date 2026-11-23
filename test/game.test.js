@@ -275,7 +275,7 @@ test('hech kim ovoz bermasa: tasodif bilan haydaladi va sababi to\'g\'ri yozilad
   await advance(45000);
   assert.equal(g.eliminated.length, 1);
   const res = findGroup(/OVOZ NATIJASI/);
-  assert.match(res, /Hech kim ovoz bermadi, shuning uchun tasodif/);
+  assert.match(res, /Bu safar ovoz bo'lmadi\. O'yin davomida hech kim ovoz olmagani uchun tasodif/);
   assert.doesNotMatch(res, /Qayta ovozda/);
 });
 

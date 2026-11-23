@@ -238,8 +238,8 @@ const AGES = [
 // Mexanikalar (server.js dagi usePower da amalga oshirilgan):
 //   dbl        - shu raundda ovozi 2 ta sanaladi (faqat ovoz berish bosqichida)
 //   shield     - shu raundda haydalmaydi (faqat ovoz berish bosqichida)
-//   veto       - tanlangan o'yinchining ovozi shu raundda sanalmaydi (faqat ovoz berish bosqichida)
-//   mark       - tanlangan o'yinchiga shu raundda +1 ovoz qo'shadi (faqat ovoz berish bosqichida)
+//   veto       - tanlangan o'yinchi ovoz beradi, lekin ovozi shu raundda sanalmaydi (faqat ovoz berish bosqichida)
+//   mark       - tanlangan o'yinchiga shu raundda +1 ovoz qo'shadi (ANONIM: natijada kim va kimga ekani yozilmaydi)
 //   peek       - tanlangan o'yinchining yopiq kartalaridan bittasini (tasodifiy) faqat o'zi ko'radi
 //   peekSecret - tanlangan o'yinchining sirini faqat o'zi ko'radi
 //   force      - tanlangan o'yinchining yopiq kartalaridan bittasi (tasodifiy) hammaga ochiladi
@@ -255,7 +255,7 @@ const POWERS = [
   ["Qutqaruvchi tanish (bir marta: tanishingiz sizni shu raundda haydalishdan saqlaydi)", 'shield'],
   ["Jim qiling (bir marta: tanlagan o'yinchingizning shu raunddagi ovozi sanalmaydi)", 'veto'],
   ["Soxta xat (bir marta: boshqa o'yinchining ovozini bekor qilasiz)", 'veto'],
-  ["Aloqani uzish (bir marta: tanlagan o'yinchi bu raundda ovoz bera olmaydi)", 'veto'],
+  ["Aloqani uzish (bir marta: tanlagan o'yinchi ovoz beradi, lekin uning ovozi bu raundda hisoblanmaydi)", 'veto'],
   ["Og'izni yumdirish (bir marta: bitta o'yinchining ovozi hisobga olinmaydi)", 'veto'],
   ["Fitna (bir marta: tanlagan o'yinchiga yashirincha qo'shimcha 1 ovoz qo'shasiz)", 'mark'],
   ["Qora ro'yxat (bir marta: bitta o'yinchining nomiga shu raundda 1 ta qo'shimcha ovoz yoziladi)", 'mark'],
@@ -277,6 +277,63 @@ const POWERS = [
   ["Omadli chipta (bir marta: tanlagan yopiq kartangizni yangi tasodifiy kartaga almashtirasiz)", 'swap']
 ];
 
+// ---------- MANTIQSIZ JUFTLIKLAR ----------
+// Kartalar mustaqil tarqatiladi, shuning uchun bir odamga bir-birini BEVOSITA inkor qiladigan ikki xususiyat tushib qolishi mumkin
+// (masalan, "Jarroh" + "Bir qo'li ishlamaydi", "Ovozi yo'q" + "Qo'shiq aytish"). Shunday juftliklar ro'yxati shu yerda.
+// Qiziqarli (lekin inkor qilmaydigan) juftliklar, masalan "Sudya" + "Unga hech kim ishonmaydi", ataylab ruxsat etilgan.
+// Qoida: [[kalit, nomlar yoki tekshiruv funksiyasi], [kalit, nomlar]] - ikkalasi ham bir kartada bo'lsa, juftlik mantiqsiz.
+const ageNum = (v) => parseInt(v, 10);
+const OLD = ['age', (v) => ageNum(v) >= 62];
+const YOUNG = ['age', (v) => ageNum(v) <= 23];
+const CLASHES = [
+  // o'qishni bilmaydi
+  [['secret', ["O'qishni bilmaydi"]], ['job', ['Yozuvchi', 'Tarjimon', 'Tarixchi', 'Sudya', 'Muhandis', 'Kimyogar', 'Geolog']]],
+  [['secret', ["O'qishni bilmaydi"]], ['hobby', ['Kundalik yuritish', "She'r yozish", 'Krossvord yechish']]],
+  [['secret', ["O'qishni bilmaydi"]], ['baggage', ["Omon qolish yo'riqnomasi"]]],
+  // ovozi yo'q
+  [['health', ["Ovozi yo'q"]], ['trait', ['Gapga chechan']]],
+  [['health', ["Ovozi yo'q"]], ['hobby', ["Qo'shiq aytish"]]],
+  [['health', ["Ovozi yo'q"]], ['secret', ['Yashirin shuhrat egasi', "Yolg'on tushini aytib odamlarni qo'rqitadi"]]],
+  // oyog'i singan / madori kam: yura olmaydi yoki tez charchaydi
+  [['health', ["Oyog'i singan"]], ['job', ['Pochtachi', "Tog' gidi", "Yong'in o'chiruvchi", 'Bokschi']]],
+  [['health', ["Oyog'i singan"]], ['hobby', ['Yugurish', 'Velosiped haydash', 'Tungi sayr', 'Raqs tushish']]],
+  [['health', ['Madori kam']], ['job', ["Yong'in o'chiruvchi", "Tog' gidi", 'Bokschi']]],
+  [['health', ['Madori kam']], ['hobby', ['Yugurish', 'Velosiped haydash']]],
+  [['health', ['Madori kam']], ['trait', ['Chidamli']]],
+  // bir qo'li ishlamaydi
+  [['health', ["Bir qo'li ishlamaydi"]], ['job', ['Jarroh', 'Payvandchi', 'Bokschi']]],
+  [['health', ["Bir qo'li ishlamaydi"]], ['hobby', ['Kamondan o\'q otish', 'Arqon to\'qish', 'Soat ta\'mirlash', "Yog'ochdan o'yma", 'Haykal yasash']]],
+  // boshqa sog'liq muammolari
+  [['health', ['Ranglarni ajratolmaydi']], ['job', ['Moda dizayneri']]],
+  [['health', ['Balandlikdan boshi aylanadi']], ['job', ["Tog' gidi"]]],
+  [['health', ["Ko'p uxlaydi"]], ['job', ['Qorovul']]],
+  [['health', ["Ko'p uxlaydi"]], ['secret', ["Kechalari boshqalarning ishini qilib qo'yadi"]]],
+  [['health', ['Ishtahasi past']], ['secret', ["Kechasi omborga kirib ovqat yeydi"]]],
+  [['health', ['Asabi zaif']], ['trait', ['Sovuqqon']]],
+  [['health', ["Mutlaqo sog'lom"]], ['age', (v) => [54, 71].includes(ageNum(v))]],
+  // xarakter va kasb
+  [['trait', ['Isrofgar']], ['job', ['Omborchi']]],
+  // yosh
+  [OLD, ['health', ['Yuguruvchi sog\'ligi']]],
+  [OLD, ['hobby', ['Yugurish']]],
+  [OLD, ['job', ['Bokschi', "Yong'in o'chiruvchi", "Tog' gidi"]]],
+  [YOUNG, ['job', ['Jarroh', 'Sudya']]]
+];
+
+const mainOf = (v) => String(v).split(' (')[0];
+const matches = (card, [key, test]) => {
+  const v = card[key];
+  if (v == null) return false;
+  return typeof test === 'function' ? !!test(v) : test.includes(mainOf(v));
+};
+// Kartada mantiqsiz juftlik bormi? Bor bo'lsa [kalit1, kalit2] qaytaradi, yo'q bo'lsa null.
+function clashes(card) {
+  return CLASHES.filter(([a, b]) => matches(card, a) && matches(card, b)).map(([a, b]) => [a[0], b[0]]);
+}
+function clash(card) {
+  return clashes(card)[0] || null;
+}
+
 const strings = (list) => list.map((x) => x[0]);
 const scoreMap = new Map();
 [JOBS, HEALTH, TRAITS, HOBBIES, BAGGAGE, SECRETS, AGES].forEach((l) => l.forEach(([t, v]) => scoreMap.set(t, v)));
@@ -291,6 +348,9 @@ module.exports = {
   SECRETS: strings(SECRETS),
   AGES: strings(AGES),
   POWERS: strings(POWERS),
+  CLASHES,
+  clash,
+  clashes,
   SCORES: scoreMap,
   POWER_MECH: powerMech,
   RAW: { JOBS, HEALTH, TRAITS, HOBBIES, BAGGAGE, SECRETS, AGES, POWERS }

@@ -101,7 +101,7 @@ test('himoya: eng ko\'p ovoz olsa ham haydalmaydi, keyingi eng ko\'pi haydaladi'
   assert.ok(groupTexts().some((t) => /himoyalangan/.test(t) && /ishlatilgan imkoniyatlar/.test(t)), 'e\'lon qilinadi');
 });
 
-test('hamma himoyalangan bo\'lsa o\'yin qotib qolmaydi (himoya bekor)', async () => {
+test('hamma himoyalangan bo\'lsa: hech kim haydalmaydi, qalqonlar sarflanadi, ovoz qaytadan o\'tadi', async () => {
   const { g, users, P } = await startGame(4);
   await toVote(g);
   for (const p of P) {
@@ -110,7 +110,17 @@ test('hamma himoyalangan bo\'lsa o\'yin qotib qolmaydi (himoya bekor)', async ()
   }
   await castAll(g, users, [[0, 1], [1, 2], [2, 3], [3, 0]]);
   await advance(500);
-  assert.ok(g.eliminated.length === 1 || g.revote, 'natija chiqdi yoki qayta ovoz');
+  assert.equal(g.eliminated.length, 0, 'hech kim haydalmadi');
+  assert.equal(g.phase, 'vote', 'ovoz qaytadan boshlandi');
+  assert.equal(g.votes.size, 0);
+  assert.equal(g.fx.shield.size, 0, 'qalqonlar sarflandi');
+  assert.ok(groupTexts().some((t) => /Hamma nomzod himoyalangan/.test(t)));
+  assert.equal(P.every((p) => p.votesAgainst === 0), true, 'bekor bo\'lgan ovoz o\'yin hisobiga qo\'shilmaydi');
+  // qalqonlar qaytmaydi: endi oddiy ovoz natija beradi
+  await castAll(g, users, [[0, 1], [1, 2], [2, 1], [3, 1]]);
+  await advance(500);
+  assert.equal(g.eliminated.length, 1);
+  assert.equal(g.eliminated[0].id, P[1].id);
 });
 
 test('ovozni bekor qilish: nishonning ovozi sanalmaydi va durang buziladi', async () => {

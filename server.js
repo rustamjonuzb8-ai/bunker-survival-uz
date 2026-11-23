@@ -965,7 +965,7 @@ bot.on('my_chat_member', async (ctx) => {
 
 // ---------- MA'LUMOTLAR ----------
 // Kartalar cards.js da: har kategoriyada 30 tadan variant (30 o'yinchigacha takrorlanmaydi)
-const { JOBS, HEALTH, TRAITS, HOBBIES, BAGGAGE, SECRETS, AGES, POWERS, POWER_MECH } = require('./cards');
+const { JOBS, HEALTH, TRAITS, HOBBIES, BAGGAGE, SECRETS, AGES, POWERS, POWER_MECH, clash, clashes } = require('./cards');
 const OUT_IMAGES = 3; // assets/out_0..out_2
 const DISASTERS = [
   "Yadro urushi: tashqarida zaharli nur, 5 yil yashash kerak",
@@ -1019,6 +1019,43 @@ const ATTRS = [
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const makeCode = () => Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, 'X');
 const attrOf = (k) => ATTRS.find((a) => a.key === k);
+
+// Bir kartadagi mantiqsiz juftliklarni tuzatadi ("Jarroh" + "Bir qo'li ishlamaydi" kabi, cards.js dagi CLASHES).
+// Avval boshqa o'yinchi bilan o'sha xususiyatni almashtiradi (qiymatlar takrorlanmaydi), bo'lmasa hech kimda yo'q qiymat oladi.
+function fixClashes(players) {
+  const keys = Object.keys(POOLS);
+  const cnt = (p) => clashes(p.card).length;
+  for (let guard = 0; guard < 500; guard++) {
+    const p = players.find((x) => cnt(x) > 0);
+    if (!p) return true;
+    const before = cnt(p);
+    // mantiqsiz juftlikdagi almashtirsa bo'ladigan xususiyatlar (yosh almashtirilmaydi: jins unga bog'liq)
+    const pair = [...new Set([].concat(...clashes(p.card)))].filter((k) => POOLS[k]);
+    let fixed = false;
+    // har bir almashtirish mantiqsizliklar sonini KAMAYTIRADI, boshqa o'yinchiga yangisini qo'shmaydi
+    for (const key of shuffle(pair.length ? pair : keys)) {
+      for (const q of shuffle(players.filter((x) => x !== p))) {
+        const qBefore = cnt(q);
+        const a = p.card[key];
+        p.card[key] = q.card[key];
+        q.card[key] = a;
+        if (cnt(p) < before && cnt(q) <= qBefore) { fixed = true; break; }
+        q.card[key] = p.card[key];
+        p.card[key] = a;
+      }
+      if (fixed) break;
+      for (const v of shuffle(POOLS[key].filter((v) => !players.some((x) => x.card[key] === v)))) {
+        const a = p.card[key];
+        p.card[key] = v;
+        if (cnt(p) < before) { fixed = true; break; }
+        p.card[key] = a;
+      }
+      if (fixed) break;
+    }
+    if (!fixed) return false; // juda kam ehtimol: o'yin to'xtamasin
+  }
+  return false;
+}
 const attrLine = (card, a) => `${a.icon} ${a.label}: ${card[a.key]}`;
 
 function makeCard(draws) {
@@ -1113,6 +1150,18 @@ function later(ms, fn) {
   return t;
 }
 
+// "Hamma tayyor" bo'lganda 0,5 soniyadan keyin bosqichni yopish. Taymer FAQAT o'zi ochilgan bosqichga tegishli:
+// bosqich almashgan bo'lsa (masalan, qayta ovoz boshlangan bo'lsa), eski taymer yangisini yopib yubormaydi.
+function closeSoon(g, fn) {
+  if (g.closingPhase === g.phaseId) return; // shu bosqich uchun allaqachon rejalashtirilgan
+  g.closingPhase = g.phaseId;
+  const id = g.phaseId;
+  later(500, () => {
+    if (g.finished || g.phaseId !== id) return;
+    return fn(g);
+  });
+}
+
 function newPhase(g, phase) {
   g.phase = phase;
   g.phaseId++;
@@ -1185,11 +1234,18 @@ function liveRender(g) {
     body = `📂 <b>${g.step}-karta ochiladi</b>\nHar kim botdagi shaxsiy chatida bitta xususiyatini tanlab ochadi.\n\n${list}\n\nOchganlar: <b>${done}/${alive(g).length}</b>${warn}`;
     rows = [[Markup.button.url('🪪 Kartamni ochish', `https://t.me/${BOT_USERNAME}`)]];
   } else if (g.phase === 'discuss') {
-    const first = g.step === 1;
+    // 2-karta faqat ochiladigan karta qolgan bo'lsagina bor (afterDiscuss ham shunday hal qiladi)
+    const first = g.step === 1 && !nothingToReveal(g);
     const k = g.ready ? g.ready.size : 0;
+    const title = g.noReveal ? 'MUHOKAMA' : `MUHOKAMA · ${g.step}-kartadan keyin`;
+    const next = first
+      ? 'Keyin 2-karta ochiladi.'
+      : nothingToReveal(g)
+        ? 'Barcha kartalar ochildi. Muhokamadan keyin ovoz beramiz.'
+        : 'Keyin ovoz berish boshlanadi.';
     body =
-      `💬 <b>MUHOKAMA · ${g.step}-kartadan keyin</b>\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\n` +
-      `${first ? 'Keyin 2-karta ochiladi.' : 'Keyin ovoz berish boshlanadi.'}\n✅ Tayyor: <b>${k}/${alive(g).length}</b> (tugatish uchun <b>${readyNeed(g)}</b> kishi kerak)`;
+      `💬 <b>${title}</b>\nGuruhning ovozli chatida gaplashing: kim bunkerga loyiq emas? Kimning sirini fosh qilasiz?\n\n` +
+      `${next}\n✅ Tayyor: <b>${k}/${alive(g).length}</b> (tugatish uchun <b>${readyNeed(g)}</b> kishi kerak)`;
     rows = [
       [Markup.button.callback(`✅ Tayyorman (${k}/${readyNeed(g)})`, `ready_${g.code}`)],
       [Markup.button.callback('⚡ Imkoniyatim', `pw_${g.code}`)],
@@ -1408,6 +1464,7 @@ async function beginGame(g) {
     p.votesAgainst = 0;
     p.pw = { mech: POWER_MECH.get(p.card.power), used: false };
   });
+  if (!fixClashes(g.players)) console.log('mantiqsiz juftlik to\'liq tuzatilmadi (o\'yin davom etadi)');
   g.fx = newFx();
   recordGameStart(g);
   await edit(g.chatId, g.msgId, `🛡 Xona ${g.code} - o'yin boshlandi`);
@@ -1428,9 +1485,11 @@ async function startRound(g) {
   g.round++;
   g.step = 1;
   g.fx = newFx();
-  // 8 ta xususiyat 4 raundga yetadi; undan keyingi raundlarda ochish bosqichi o'tkazib yuboriladi
+  g.noReveal = false;
+  // hamma kartasi ochilgach, raundlarda ochish bosqichi o'tkazib yuboriladi (faqat muhokama va ovoz)
   if (nothingToReveal(g)) {
     g.step = 2;
+    g.noReveal = true;
     return startDiscuss(g);
   }
   await startReveal(g);
@@ -1469,7 +1528,7 @@ async function revealAttr(g, userId, key) {
   g.roundRevealed.add(p.id);
   liveRefresh(g);
   if (alive(g).every((x) => g.roundRevealed.has(x.id))) {
-    later(500, () => endReveal(g));
+    closeSoon(g, endReveal);
   }
   return { ok: true, text: 'Ochildi!' };
 }
@@ -1505,7 +1564,10 @@ async function revealKick(g) {
   }
   DB.kickedAfk = (DB.kickedAfk || 0) + late.length;
   saveSoon();
-  let text = late.map((p) => `🚪 ${p.name} o'yindan chiqdi (vaqtida karta ochmadi). O'yin davom etadi.`).join('\n');
+  // "O'yin davom etadi" faqat haqiqatan davom etsa yoziladi (joylardan ko'p odam qolgan bo'lsa)
+  const goesOn = alive(g).length > g.capacity;
+  let text = late.map((p) => `🚪 ${p.name} o'yindan chiqdi (vaqtida karta ochmadi).`).join('\n');
+  text += goesOn ? "\nO'yin davom etadi." : "\nQolganlar bunkerdagi joydan ko'p emas, shuning uchun o'yin yakunlanadi.";
   // xona egasi chiqib ketsa, adminlik birinchi qo'shilgan tirik o'yinchiga o'tadi
   if (late.some((p) => p.id === g.hostId)) {
     const next = g.players.find((p) => p.alive);
@@ -1571,9 +1633,9 @@ function voters(g) {
   return alive(g);
 }
 
-async function startVote(g, tied) {
+async function startVote(g, tied, again) {
   if (g.finished) return;
-  if (!tied && g.phase !== 'discuss') return;
+  if (!tied && !again && g.phase !== 'discuss') return;
   newPhase(g, 'vote');
   g.votes = new Map();
   g.revote = !!tied;
@@ -1624,7 +1686,7 @@ function fxSummary(g) {
       if (e.mech === 'dbl') return `⚖️ ${e.who} imkoniyatini ishlatdi: ovozi 2 ta sanaldi`;
       if (e.mech === 'shield') return `🛡 ${e.who} imkoniyatini ishlatdi: bu raundda himoyalangan`;
       if (e.mech === 'veto') return `🚫 ${e.who} imkoniyatini ishlatdi: ${e.target} ning ovozi sanalmadi`;
-      return `🎯 ${e.who} imkoniyatini ishlatdi: ${e.target} ga +1 ovoz qo'shildi`;
+      return `🎯 Bitta qo'shimcha ovoz qo'shildi (kim va kimga ekani sir)`; // anonim: kartada "hech kim sezmaydi"
     });
   return lines.length ? `⚡ Bu raundda ishlatilgan imkoniyatlar:\n${lines.join('\n')}\n\n` : '';
 }
@@ -1655,6 +1717,16 @@ function usePower(g, userId, arg) {
   }
   if ((mech === 'peek' || mech === 'force') && !hidden.length) return { ok: false, text: 'Uning hamma kartasi allaqachon ochiq.' };
   if (mech === 'peekSecret' && t.revealed.includes('secret')) return { ok: false, text: 'Uning siri allaqachon ochiq.' };
+  // almashtirish: yangi karta mantiqsiz juftlik hosil qilmasligi kerak (masalan, "Ovozi yo'q" + "Qo'shiq aytish")
+  let swapChoice = null;
+  if (mech === 'swap') {
+    const cur = p.card[key];
+    const fits = (v) => !clash(Object.assign({}, p.card, { [key]: v }));
+    let free = POOLS[key].filter((v) => !g.players.some((q) => q.card[key] === v) && fits(v));
+    if (!free.length) free = POOLS[key].filter((v) => v !== cur && fits(v));
+    if (!free.length) return { ok: false, text: 'Hozir mos yangi karta topilmadi. Imkoniyatingiz sarflanmadi.' };
+    swapChoice = pick(free);
+  }
 
   // hamma tekshiruvdan o'tdi: endi bir lahzada belgilaymiz
   p.pw.used = true;
@@ -1675,10 +1747,7 @@ function usePower(g, userId, arg) {
     return { ok: true, text: 'Tayyor: karta hammaga ochildi.', group: `⚡ ${p.name} imkoniyatini ishlatdi: ${t.name} ning yopiq kartasi ochildi!\n${attrLine(t.card, a)}` };
   }
   // swap: yangi qiymat hech kimda yo'q bo'lganlardan, bo'lmasa joriysidan boshqasi
-  const cur = p.card[key];
-  let free = POOLS[key].filter((v) => !g.players.some((q) => q.card[key] === v));
-  if (!free.length) free = POOLS[key].filter((v) => v !== cur);
-  p.card[key] = pick(free);
+  p.card[key] = swapChoice;
   return { ok: true, text: `🔄 ${attrOf(key).label} kartangiz almashtirildi.\nYangisi: ${p.card[key]}\n\n(faqat siz ko'rdingiz)` };
 }
 
@@ -1694,7 +1763,7 @@ async function castVote(g, voterId, targetId) {
   if (voterId === targetId) return { ok: false, text: 'O\'zingizga ovoz bera olmaysiz.' };
   g.votes.set(voterId, targetId);
   liveRefresh(g);
-  if (g.votes.size >= voters(g).length) later(500, () => endVote(g));
+  if (g.votes.size >= voters(g).length) closeSoon(g, endVote);
   return { ok: true, text: `Ovoz qabul qilindi: ${target.name}` };
 }
 
@@ -1704,6 +1773,15 @@ async function endVote(g) {
   await liveRetire(g);
   const tally = weightedTally(g);
   const wasRevote = g.revote;
+  // Hamma nomzod himoyalangan bo'lsa: hech kim haydalmaydi. Qalqonlar sarflangan, ovoz qaytadan o'tadi.
+  // (Har kimning imkoniyati bir martalik, shuning uchun bu cheksiz takrorlanmaydi.)
+  if (g.voteCandidates.every((p) => g.fx.shield.has(p.id))) {
+    const fxText = fxSummary(g);
+    const again = wasRevote ? g.voteCandidates : null;
+    g.fx = newFx();
+    await say(g.chatId, `${fxText}🛡 Hamma nomzod himoyalangan, shuning uchun bu safar hech kim haydalmadi. Qalqonlar sarflandi, ovoz berish qaytadan boshlanadi.`);
+    return startVote(g, again, true);
+  }
   if (!wasRevote) {
     // butun o'yin davomidagi ovozlar hisobi (tengsizlikni hal qilish uchun)
     for (const [id, c] of tally) {
@@ -1713,14 +1791,11 @@ async function endVote(g) {
     g.firstTally = new Map(tally);
   }
   // himoyalanganlar (shield) haydalmaydi: ularga tushgan ovozlar hisobga olinmaydi.
-  // Hamma himoyalangan bo'lsa (kam uchraydi), himoya bekor qilinadi.
-  const unshielded = g.voteCandidates.filter((p) => !g.fx.shield.has(p.id));
-  const pool = unshielded.length ? unshielded : g.voteCandidates;
+  const pool = g.voteCandidates.filter((p) => !g.fx.shield.has(p.id));
   const poolMax = Math.max(...pool.map((p) => tally.get(p.id) || 0));
   const noVotes = poolMax === 0;
   let candidates = noVotes ? pool : pool.filter((p) => (tally.get(p.id) || 0) === poolMax);
   let note = '';
-  if (noVotes) note = tally.size === 0 ? 'Hech kim ovoz bermadi.' : "Ovozlar faqat himoyalangan o'yinchilarga tushdi, shuning uchun qolganlardan biri tasodif bilan tanlandi.";
   // 1) Teng bo'lsa: faqat teng chiqqanlar o'rtasida qayta ovoz
   if (candidates.length > 1 && !wasRevote && !noVotes) {
     await say(g.chatId, `⚖️ Ovozlar teng bo'ldi: ${candidates.map((p) => p.name).join(', ')}.\nHozir faqat shular o'rtasida qayta ovoz beriladi.`);
@@ -1734,12 +1809,15 @@ async function endVote(g) {
     const maxAgainst = Math.max(...candidates.map((p) => p.votesAgainst || 0));
     const worst = candidates.filter((p) => (p.votesAgainst || 0) === maxAgainst);
     out = pick(worst);
-    if (noVotes) note = tally.size === 0 ? 'Hech kim ovoz bermadi, shuning uchun tasodif bilan tanlandi.' : note;
-    else
-      note =
-        worst.length === 1
-          ? 'Qayta ovozda ham teng bo\'ldi. O\'yin davomida ko\'proq ovoz olgani haydaldi.'
-          : 'Hamma ko\'rsatkich teng bo\'ldi, tasodif bilan tanlandi.';
+    // Haqiqiy sabab: avval o'yin davomidagi ovozlar tekshiriladi, faqat u ham teng bo'lsagina qur'a
+    const why =
+      worst.length === 1
+        ? `O'yin davomida eng ko'p ovoz ${out.name} olgani uchun u chiqdi.`
+        : maxAgainst === 0
+          ? "O'yin davomida hech kim ovoz olmagani uchun tasodif bilan tanlandi."
+          : "O'yin davomidagi ovozlar ham teng bo'lgani uchun tasodif bilan tanlandi.";
+    if (noVotes) note = `${tally.size === 0 ? "Bu safar ovoz bo'lmadi." : "Ovozlar faqat himoyalangan o'yinchilarga tushdi."} ${why}`;
+    else note = `Qayta ovozda ham teng bo'ldi. ${why}`;
   }
 
   const base = wasRevote && g.firstTally ? g.firstTally : tally;
@@ -1784,11 +1862,21 @@ async function finishGame(g) {
   const outText = g.eliminated.length
     ? g.eliminated.map((p, i) => `${i + 1}. ${p.name} (${p.card.job})${p.kicked ? ' 🚪 karta ochmay chiqib ketdi' : ''}`).join('\n')
     : 'Hech kim';
-  const winNames = winners.length ? winners.map((p) => p.name).join(', ') : 'hech kim';
-  await sayPhoto(g.chatId, 'win', `🏁 O'YIN TUGADI!\n\n🏆 BUNKERGA KIRGANLAR: ${winNames}`);
+  const winNames = winners.map((p) => p.name).join(', ');
+  // Bunkerda 2 ta joy qoidasi o'zgarmaydi. Lekin faol o'yinchi 2 tadan kam qolsa, sababi ochiq yoziladi.
+  let reason = '';
+  if (winners.length === 0) {
+    reason = "Partiya faollik bo'lmagani uchun yakunlandi: qolganlarning hammasi karta ochmay o'yindan chiqarildi, bunkerga hech kim kirmadi.";
+    await say(g.chatId, `🏁 O'YIN TUGADI!\n\n${reason}`);
+  } else {
+    if (winners.length < g.capacity) {
+      reason = `ℹ️ Bunkerda ${g.capacity} ta joy bor edi, lekin boshqalar karta ochmay o'yindan chiqarildi. ${winners.length === 1 ? `${winNames} yagona faol qolgani uchun yolg'iz g'olib bo'ldi.` : `${winNames} faol qolgani uchun g'olib bo'ldi.`}\n\n`;
+    }
+    await sayPhoto(g.chatId, 'win', `🏁 O'YIN TUGADI!\n\n🏆 BUNKERGA KIRGANLAR: ${winNames}`);
+  }
   await say(
     g.chatId,
-    `☢️ Falokat: ${g.disaster}\n\n🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText || 'Hech kim'}\n\n☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
+    `☢️ Falokat: ${g.disaster}\n\n${winners.length ? `${reason}🏆 BUNKERGA KIRGANLAR (omon qoldi):\n\n${winText}\n\n` : ''}☠️ Haydalganlar (tartib bilan):\n${outText}\n\n📊 Statistika: ${g.round} raund, ${g.players.length} o'yinchi, ${g.capacity} ta joy.\n\nYangi o'yin uchun /bunker yozing.`,
     Markup.inlineKeyboard([[Markup.button.url('➕ Botni boshqa guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)]])
   );
   // karta ochmay chiqib ketganlarning kartasi o'yin oxirida ochiladi (xabar uzun bo'lsa bo'laklarga bo'linadi)
@@ -1879,6 +1967,7 @@ Misol: "Dilya, sen blogger ekansan, bunkerda obunachilar bizga ovqat bermaydi. S
 ⚖️ Ovozlar teng bo'lsa, faqat teng chiqqanlar o'rtasida qayta ovoz beriladi. Yana teng bo'lsa, o'yin davomida ko'proq ovoz olgan haydaladi.
 ☠️ Haydalganning kartasi to'liq ochiladi.
 🏁 Bunkerda HAR DOIM 2 ta joy bor. 2 kishi qolganda o'yin tugaydi va ikkalasi ham G'OLIB.
+🤷 Ovoz bo'lmasa, o'yin davomida eng ko'p ovoz olgan haydaladi. Faqat u ham teng bo'lsa, tasodif hal qiladi.
 
 Misol: 6 o'yinchi bo'lsa, 4 raund o'tadi, 4 kishi haydaladi, 2 kishi bunkerga kiradi.
 
@@ -1892,16 +1981,16 @@ Ishlatish: guruhdagi xabarda "⚡ Imkoniyatim" tugmasini bosing. Bot sizga shaxs
 
 🗳 Ovoz berish paytida ishlatiladiganlar:
 • Ikki ovoz: ovozingiz 2 ta sanaladi
-• Himoya: shu raundda haydalmaysiz
-• Ovozni bekor qilish: tanlangan o'yinchining ovozi sanalmaydi
-• Qo'shimcha ovoz: tanlangan o'yinchiga +1 ovoz
+• Himoya: shu raundda haydalmaysiz (hamma nomzod himoyalangan bo'lsa, hech kim haydalmaydi va ovoz qaytadan o'tadi)
+• Ovozni bekor qilish: tanlangan o'yinchi ovoz beradi, lekin uning ovozi sanalmaydi
+• Qo'shimcha ovoz: tanlangan o'yinchiga +1 ovoz (anonim: kim qo'shgani va kimga ekani e'lon qilinmaydi)
 
 🔍 Muhokama yoki ovoz paytida:
 • Ko'rish: boshqa o'yinchining yopiq kartasini (yoki sirini) faqat o'zingiz ko'rasiz
 • Majburan ochish: boshqaning yopiq kartasi hammaga ochiladi
 • Almashtirish: o'zingizning yopiq kartangiz yangisiga almashadi
 
-⚖️ Adolat uchun: o'zingizga ishlata olmaysiz, haydalgan ishlata olmaydi, bir marta ishlatilgach qaytmaydi. Ovoz natijasida ishlatilgan hamma imkoniyatlar guruhga e'lon qilinadi.
+⚖️ Adolat uchun: o'zingizga ishlata olmaysiz, haydalgan ishlata olmaydi, bir marta ishlatilgach qaytmaydi. Ovoz natijasida ishlatilgan imkoniyatlar guruhga e'lon qilinadi (faqat "Qo'shimcha ovoz" anonim qoladi: "bitta qo'shimcha ovoz qo'shildi" deb yoziladi).
 
 ⚠️ Hamma ovoz bersa, ovoz berish darhol tugaydi. Ovozga ta'sir qiladigan imkoniyatni avval ishlating, keyin ovoz bering.`
   ];
@@ -2177,4 +2266,4 @@ if (require.main === module) {
   }, 600 * 1000);
 }
 
-module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, usePower, weightedTally, newFx, POWER_INFO, ATTRS, nothingToReveal, readyNeed, barLine, shuffle, setTimer }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
+module.exports = { _game: { DISASTERS, ASSET_DIR, OUT_IMAGES, sayPhoto, photoIds, liveRender, startRound, afterDiscuss, startVote, endVote, finishGame, usePower, weightedTally, newFx, POWER_INFO, ATTRS, nothingToReveal, readyNeed, barLine, shuffle, setTimer, fixClashes, makeCard, makeDraws, closeSoon }, _admin: { trackMiddleware, trackUser, trackChat, loadDB, saveNow, getDB: () => DB, viewStats, viewNew, viewActive, viewChats, viewLive, viewBroadcast, viewUsers, viewUser, viewGroups, viewGroup, viewSettings, findUsers, ensureSettings, getSetting, applySettings, SETTING_DEFS, getLimits: () => ({ MIN_PLAYERS, REVEAL_SEC, DISCUSS1_SEC, DISCUSS2_SEC, VOTE_SEC, REVOTE_SEC, BETWEEN_SEC, KICK_GRACE_SEC }) }, bot, games, chatGame, createRoom, joinPlayer, beginGame, revealAttr, castVote, alive, findPlayer };
