@@ -2076,17 +2076,29 @@ bot.command('stop', async (ctx) => {
   ctx.reply('🛑 O\'yin to\'xtatildi. Yangi o\'yin uchun /bunker yozing.');
 });
 
+let welcomeVideoId = null;
 bot.start(async (ctx) => {
   const payload = ctx.startPayload || '';
   if (payload === 'rules') return sendRules(ctx);
   if (!payload.startsWith('join_')) {
-    await ctx.reply(
-      'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nO\'yin qoidasini o\'rganish uchun pastdagi tugmani bosing 👇',
-      Markup.inlineKeyboard([
-        [Markup.button.url('➕ Guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)],
-        [Markup.button.callback(RULES_BTN, 'rules_open')]
-      ])
-    );
+    const caption = 'Salom! Men BUNKER o\'yini botiman 🛡\n\nMeni guruhga qo\'shing va /bunker yozing. O\'yinchilar "Qo\'shilish" tugmasini bosib, shu yerda karta oladi.\n\nO\'yin qoidasini o\'rganish uchun pastdagi tugmani bosing 👇';
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.url('➕ Guruhga qo\'shish', `https://t.me/${BOT_USERNAME}?startgroup=true`)],
+      [Markup.button.callback(RULES_BTN, 'rules_open')]
+    ]);
+    if (ctx.chat.type === 'private') {
+      try {
+        const video = welcomeVideoId || { source: path.join(__dirname, 'assets', 'bunker-intro.mp4') };
+        const message = await ctx.replyWithVideo(video, { caption, supports_streaming: true, ...keyboard });
+        welcomeVideoId = message.video.file_id;
+      } catch (error) {
+        welcomeVideoId = null;
+        console.warn('Welcome video delivery failed:', error.description || error.message);
+        await ctx.reply(caption, keyboard);
+      }
+    } else {
+      await ctx.reply(caption, keyboard);
+    }
     if (isAdmin(ctx) && ctx.chat.type === 'private') await ctx.reply('🛠 Boshqaruv tugmalari pastda 👇', adminKeyboard());
     return;
   }
